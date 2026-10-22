@@ -51,10 +51,50 @@ Este proyecto se construye por fases. Esta sección y el diagrama de la base de
 datos se irán completando a medida que avancen:
 
 - [x] Fase 0 — Setup del proyecto (Vite + React + TS, Supabase CLI, estructura de carpetas)
-- [ ] Fase 1 — Base de datos y autenticación
+- [x] Fase 1 — Base de datos y autenticación
 - [ ] Fase 2 — Viajes del conductor
 - [ ] Fase 3 — Búsqueda y solicitudes del pasajero
 - [ ] Fase 4 — Puntuaciones
+
+### Fase 1 — qué se construyó
+
+- Tabla `profiles` (1:1 con `auth.users`) con DNI, nombres, apellidos, sexo,
+  roles, `verification_status` y RLS: cada usuario solo lee/edita su propia
+  fila completa; `verification_status` solo lo puede cambiar el Edge Function
+  (vía `service_role`), nunca el cliente.
+- Vista `public_profiles`: lo único visible del perfil de otro usuario
+  (nombre de pila, foto, puntuación) — nunca DNI ni apellidos.
+- Trigger `on_auth_user_created`: crea el `profile` automáticamente al
+  registrarse, leyendo los datos extra que manda el formulario.
+- Edge Function `verify-identity`: implementa `IdentityVerificationService`
+  con un mock determinista (sin llamadas externas reales):
+  - DNI que empieza en `00` → RENIEC no lo encuentra → `rejected`
+  - DNI que termina en `9` → antecedentes encontrados → `rejected`
+  - cualquier otro DNI de 8 dígitos → `verified`
+- Páginas de registro (`/register`) y login (`/login`), y una ruta protegida
+  (`/`) que bloquea el acceso hasta que el usuario quede verificado.
+- Seed de 4 usuarios ya verificados (`supabase/seed.sql`), contraseña
+  `password123` para todos:
+  - `conductor1@example.com`, `conductor2@example.com` (conductores)
+  - `pasajero1@example.com`, `pasajero2@example.com` (pasajeros)
+
+### Qué probar a mano
+
+1. `npm run dev` y abre `http://localhost:5173`.
+2. **Registro + verificación automática:** ve a `/register`, usa un DNI que
+   no empiece en `00` ni termine en `9` (ej. `12345678`) → debería terminar
+   en "Estado de verificación: verified".
+3. **Registro rechazado:** regístrate con un DNI que termine en `9` (ej.
+   `12345679`) → debería mostrar el mensaje de identidad no verificada.
+4. **Login con usuario sembrado:** cierra sesión y entra con
+   `conductor1@example.com` / `password123`.
+5. **Privacidad:** confirma en el dashboard de Supabase (Table Editor →
+   `profiles`) que el DNI y apellidos existen en la tabla pero que la vista
+   `public_profiles` (Table Editor → Views) no los expone.
+
+> Nota: en el proyecto de Supabase, en Authentication → Sign In / Providers →
+> Email, desactiva "Confirm email" para que el registro no dependa de un
+> correo de confirmación (el plan gratuito tiene un límite de envío muy bajo).
 
 ## Estructura de carpetas
 
