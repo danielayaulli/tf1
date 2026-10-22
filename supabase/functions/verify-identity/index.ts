@@ -97,7 +97,16 @@ Deno.serve(async (req) => {
       ? await identityService.checkCriminalRecord(profile.dni)
       : { clean: false };
 
-    const newStatus = dniResult.valid && recordResult.clean ? "verified" : "rejected";
+    // Modo prueba: para la validación con personas reales, un DNI real de 8
+    // dígitos puede terminar en "9" o lo que sea y el mock lo rechazaría sin
+    // razón real. En vez de guardar DNIs reales de los que probarán la app
+    // (en código, seed o repo), se activa un secret del Edge Function
+    // (`supabase secrets set TEST_MODE_AUTO_VERIFY=true`, nunca committeado)
+    // que aprueba automáticamente a cualquiera, sin excepción por DNI.
+    const testModeAutoVerify = Deno.env.get("TEST_MODE_AUTO_VERIFY") === "true";
+
+    const newStatus =
+      testModeAutoVerify || (dniResult.valid && recordResult.clean) ? "verified" : "rejected";
 
     const { error: updateError } = await adminClient
       .from("profiles")
@@ -110,11 +119,12 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       status: newStatus,
-      reason: !dniResult.valid
-        ? "dni_not_found"
-        : !recordResult.clean
-          ? "criminal_record_found"
-          : null,
+      reason:
+        newStatus === "verified"
+          ? null
+          : !dniResult.valid
+            ? "dni_not_found"
+            : "criminal_record_found",
     });
   } catch (err) {
     return jsonResponse({ error: (err as Error).message }, 500);

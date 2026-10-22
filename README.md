@@ -9,7 +9,8 @@ que estar pulido.
 
 - **Frontend:** Vite + React + TypeScript (SPA), React Router, `@vis.gl/react-google-maps`
 - **Backend:** Supabase (Auth, Postgres + PostGIS, Realtime, Edge Functions)
-- **Mapas/rutas:** Google Maps JavaScript API + Directions API
+- **Mapas/rutas:** Google Maps JavaScript API + Routes API
+- **Despliegue:** Vercel
 
 ## Requisitos
 
@@ -55,6 +56,7 @@ datos se irán completando a medida que avancen:
 - [x] Fase 2 — Viajes del conductor
 - [x] Fase 3 — Búsqueda y solicitudes del pasajero
 - [x] Fase 4 — Puntuaciones
+- [x] Fase 5 — Vehículo del conductor, ubicación en tiempo real y despliegue
 
 ### Fase 1 — qué se construyó
 
@@ -207,18 +209,168 @@ datos se irán completando a medida que avancen:
    viaje" en uno de los viajes `scheduled` con un pasajero aceptado, y
    confirma que aparece el formulario de calificación para ese viaje.
 
+### Fase 5 — qué se construyó
+
+- Tabla `vehicles` (placa, modelo, color, asientos): un conductor debe
+  registrar su vehículo antes de poder publicar un viaje — la base de datos
+  lo exige con un trigger (`set_trip_vehicle`), no solo el formulario.
+  Página `/conductor/vehiculo`.
+- Botón "Iniciar viaje" en `/conductor/mis-viajes` (`scheduled -> ongoing`):
+  es lo que activa que se pueda compartir ubicación en vivo para ese viaje.
+- Tabla `live_locations` (una fila por usuario y viaje, se sobreescribe con
+  cada actualización) con RLS: el pasajero con solicitud **aceptada** ve
+  solo al conductor; el conductor ve a cada pasajero **aceptado** de su
+  viaje; un pasajero nunca ve a otro. Se limpia sola (triggers) cuando una
+  solicitud deja de estar aceptada o el viaje termina/se cancela.
+- Mapa en vivo (`src/features/location/LiveTripMap.tsx`) embebido en "Mis
+  viajes" (conductor) y "Mis solicitudes" (pasajero) cuando el viaje está
+  `ongoing`: marcadores que se mueven sin recargar (Supabase Realtime),
+  "última posición hace X seg" cuando se deja de recibir una lectura nueva,
+  avisos de permiso denegado / sin señal GPS / sin conexión, y Wake Lock
+  para que la pantalla no se apague a mitad del viaje.
+- `nearby_trips` (Fase 3) ahora también incluye viajes `ongoing` y, para
+  esos, mide la cercanía contra el tramo de ruta que el conductor
+  **todavía no ha recorrido** (no contra la ruta completa ni contra su
+  posición actual), además de devolver los datos del vehículo para que el
+  pasajero identifique el carro.
+- Modo prueba (`VITE_TEST_MODE=true`): deja fijar una ubicación manual
+  haciendo clic en el mapa en vez de depender del GPS real, con una
+  tolerancia de cercanía mayor (`VITE_TEST_TOLERANCE_M`). Pensado para
+  probar con gente que no está físicamente sobre la ruta.
+- Modo prueba del lado del servidor: el Edge Function `verify-identity`
+  respeta el secret `TEST_MODE_AUTO_VERIFY` para aprobar automáticamente
+  cuentas reales sin depender de la regla determinista del DNI mock (ver
+  CLAUDE.md). No se guarda ningún DNI real en el código ni en el seed.
+- Tests de la lógica de "quién ve a quién"
+  (`src/features/location/visibility.test.ts`): espejan en TypeScript las
+  policies de RLS de `live_locations` para poder testearlas con Vitest.
+
+### Qué probar a mano (Fase 5)
+
+1. Entra con `conductor1@example.com` / `password123` → "Mi vehículo": ya
+   debería estar sembrado (Toyota Yaris, ABC-123). Prueba editarlo y
+   guardar.
+2. "Mis viajes" → en un viaje `scheduled` con un pasajero aceptado, pulsa
+   "Iniciar viaje". Debería aparecer un mapa debajo con tu propio marcador
+   (si das permiso de ubicación) y pedir el permiso del navegador.
+3. En otra sesión (ventana de incógnito o otro navegador), entra con el
+   pasajero que tiene la solicitud aceptada de ese viaje → "Mis
+   solicitudes": debería aparecer el mismo mapa en vivo, mostrando la
+   posición del conductor (no la tuya). Si ambas pestañas comparten
+   ubicación, deberías ver el marcador del otro moverse sin recargar la
+   página.
+4. Prueba los casos de borde: niega el permiso de ubicación en una de las
+   pestañas → debería mostrar el aviso de permiso denegado con
+   instrucciones; desconecta el wifi un momento → el marcador debería
+   quedarse quieto y, pasados ~15s sin una lectura nueva, mostrar "hace X
+   seg".
+5. Finaliza o cancela el viaje/la solicitud y confirma (Table Editor →
+   `live_locations` en el dashboard de Supabase) que la fila
+   correspondiente desaparece sola.
+6. Prueba el modo prueba: en `.env.local` pon `VITE_TEST_MODE=true`,
+   reinicia `npm run dev`, entra a un viaje `ongoing` y haz clic en el mapa
+   para fijar una ubicación simulada en vez de depender del GPS.
+
+## Despliegue en Vercel
+
+Resumen rápido (el detalle de cada paso, con el porqué, está en
+[CLAUDE.md](CLAUDE.md#despliegue)):
+
+1. Importa este repositorio en [vercel.com](https://vercel.com) (detecta
+   Vite solo).
+2. Agrega las variables de entorno de `.env.example` con tus valores reales
+   (Project Settings → Environment Variables) — nunca la `service_role` key
+   de Supabase aquí.
+3. Agrega el dominio de Vercel a los "HTTP referrers" permitidos de tu
+   Google Maps API key.
+4. En Supabase → Authentication → URL Configuration, pon la URL de Vercel
+   como **Site URL** y agrégala también a **Redirect URLs**.
+5. Abre la URL de Vercel en Safari de iPhone para probar (necesita HTTPS
+   para pedir ubicación y para el Wake Lock; Vercel lo da gratis).
+
+## Guía de prueba piloto (1 conductor + 4 pasajeros, celulares reales)
+
+Pensada para validar la app de punta a punta con gente real, cada quien
+desde su propio celular. Antes de empezar:
+
+- Despliega la app en Vercel (sección anterior) y abre esa URL en cada
+  celular — no uses `localhost`, no va a ser alcanzable desde otro celular.
+- En el dashboard de Supabase del proyecto, activa el modo prueba del
+  servidor mientras dure la prueba:
+  `npx supabase secrets set TEST_MODE_AUTO_VERIFY=true` (y
+  `npx supabase secrets unset TEST_MODE_AUTO_VERIFY` al terminar). Esto
+  evita que un DNI real termine en "9" y el mock lo rechace sin razón.
+- Si alguno de los pasajeros no va a estar físicamente sobre la ruta,
+  despliega con `VITE_TEST_MODE=true` (y un `VITE_TEST_TOLERANCE_M` holgado,
+  ej. `2000`) para poder fijar su ubicación con un clic en el mapa.
+
+### Conductora (tú)
+
+1. Entra a la URL de Vercel → "Regístrate" → usa tu correo y tu **DNI
+   real**. Debería verificarte automáticamente (modo prueba activado) en
+   unos segundos.
+2. En el Home → "Mi vehículo" → registra placa, modelo, color y asientos.
+3. "Publicar viaje" → marca origen y destino sobre una avenida real (la
+   que van a recorrer en la prueba), calcula la ruta, completa avenida/hora
+   /asientos y publica.
+4. Espera a que los 4 pasajeros soliciten recojo (siguiente sección) →
+   "Mis viajes" → acepta sus solicitudes a medida que lleguen.
+5. Cuando estés por salir: "Mis viajes" → **"Iniciar viaje"**. El navegador
+   te va a pedir permiso de ubicación — acéptalo ("Tu ubicación se
+   compartirá solo durante este viaje"). Debería aparecer un mapa con tu
+   propio marcador.
+6. Mientras manejas, deberías ver aparecer (y moverse) el marcador de cada
+   pasajero aceptado a medida que ellos también comparten su ubicación.
+7. Al terminar: "Finalizar viaje". Confirma que el mapa deja de compartir
+   tu ubicación (y la de ellos) — el siguiente paso de calificación mutua
+   es opcional para esta prueba.
+
+### Cada pasajero (los 4, cada uno en su propio celular)
+
+1. Entra a la misma URL de Vercel → "Regístrate" con tu correo y DNI real
+   (rol: pasajero). Debería verificarte automático.
+2. Home → "Buscar viajes" → haz clic en el mapa sobre tu ubicación real (o,
+   si usas modo prueba, sobre cualquier punto cercano a la ruta) → "Buscar
+   viajes". Deberías ver el viaje de la conductora, con el modelo/color/
+   placa de su carro.
+3. "Solicitar recojo" → elige tu punto de recojo sobre la línea azul de la
+   ruta → confirma. El botón debería cambiar a "Solicitud enviada".
+4. Espera a que la conductora acepte tu solicitud (puedes revisar en "Mis
+   solicitudes": el estado pasa de `pending` a `accepted`).
+5. **Importante:** mientras tu solicitud esté `pending`, la conductora solo
+   ve el punto fijo que marcaste, no tu ubicación en vivo — eso es
+   intencional, no un bug.
+6. Cuando la conductora pulse "Iniciar viaje" y tu solicitud ya esté
+   aceptada, entra a "Mis solicitudes": debería aparecer un mapa pidiendo
+   tu permiso de ubicación. Acéptalo. Deberías ver moverse el marcador de
+   la conductora (y solo el de ella — no el de los otros 3 pasajeros).
+7. Cuando te recojan o el viaje termine, confirma que el mapa deja de
+   pedir/mandar tu ubicación.
+
+### Qué debería fallar a propósito (para confirmar que la privacidad funciona)
+
+- Un pasajero pendiente (no aceptado) no debería ver NINGÚN mapa en vivo en
+  "Mis solicitudes".
+- Ningún pasajero debería ver el marcador de otro pasajero, en ningún
+  momento.
+- Si rechazas o cancelas una solicitud ya aceptada, su mapa debería
+  desaparecer casi de inmediato (puedes confirmarlo en Table Editor →
+  `live_locations` en el dashboard de Supabase: la fila de ese pasajero
+  debe borrarse sola).
+
 ## Estructura de carpetas
 
 ```
 src/
-  lib/            # clientes compartidos (supabase, etc.)
+  lib/            # clientes compartidos (supabase, geo, testMode, etc.)
   types/          # tipos TypeScript compartidos / generados de Supabase
   components/     # componentes UI reutilizables
   features/
     auth/         # registro, login, verificación de identidad
-    trips/        # publicar y listar viajes (conductor)
-    requests/     # solicitudes de recojo (pasajero)
+    trips/        # publicar/buscar/listar viajes y solicitudes de recojo
     ratings/      # calificaciones mutuas
+    vehicles/     # vehículo del conductor
+    location/     # ubicación en tiempo real (hooks, RLS-mirror, mapa en vivo)
 supabase/
   migrations/     # esquema SQL versionado
   functions/      # Edge Functions (ej. verificación de identidad mock)

@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { APIProvider, Map, AdvancedMarker, Polyline, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { useAuth } from "../auth/AuthContext";
 import { isInLima } from "../../lib/geo";
 import type { LatLng } from "../../lib/geo";
 import { createTrip } from "./api";
+import { fetchMyVehicle } from "../vehicles/api";
+import type { Vehicle } from "../../types/vehicle";
 
 const LIMA_CENTER = { lat: -12.09, lng: -77.02 };
 
@@ -16,6 +18,7 @@ function PublishTripForm() {
   const navigate = useNavigate();
   const routesLibrary = useMapsLibrary("routes");
 
+  const [vehicle, setVehicle] = useState<Vehicle | null | undefined>(undefined);
   const [origin, setOrigin] = useState<LatLng | null>(null);
   const [destination, setDestination] = useState<LatLng | null>(null);
   const [route, setRoute] = useState<LatLng[] | null>(null);
@@ -26,6 +29,11 @@ function PublishTripForm() {
   const [error, setError] = useState<string | null>(null);
   const [calculatingRoute, setCalculatingRoute] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!profile) return;
+    fetchMyVehicle(profile.id).then(setVehicle);
+  }, [profile]);
 
   function handleMapClick(latLng: LatLng) {
     if (!pickMode) return;
@@ -110,6 +118,20 @@ function PublishTripForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (vehicle === undefined) return <p>Cargando...</p>;
+
+  if (vehicle === null) {
+    return (
+      <div className="trip-page">
+        <h1>Publicar viaje</h1>
+        <p>
+          Antes de publicar un viaje debes registrar tu vehículo (placa, modelo, color y asientos).
+        </p>
+        <Link to="/conductor/vehiculo">Registrar mi vehículo</Link>
+      </div>
+    );
   }
 
   return (

@@ -76,6 +76,11 @@ export async function finishTrip(tripId: string) {
   if (error) throw error;
 }
 
+export async function startTrip(tripId: string) {
+  const { error } = await supabase.from("trips").update({ status: "ongoing" }).eq("id", tripId);
+  if (error) throw error;
+}
+
 export interface PickupRequestWithTrip extends PickupRequest {
   trip: Trip | null;
   driver: PublicProfile | null;
@@ -126,6 +131,9 @@ export interface NearbyTrip {
   driver_rating_count: number;
   men_count: number;
   women_count: number;
+  vehicle_placa: string | null;
+  vehicle_modelo: string | null;
+  vehicle_color: string | null;
 }
 
 export async function fetchNearbyTrips(point: LatLng, toleranceM = 150): Promise<NearbyTrip[]> {

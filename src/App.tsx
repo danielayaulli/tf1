@@ -8,6 +8,7 @@ import { MyTripsPage } from "./features/trips/MyTripsPage";
 import { PublishTripPage } from "./features/trips/PublishTripPage";
 import { SearchTripsPage } from "./features/trips/SearchTripsPage";
 import { MyRequestsPage } from "./features/ratings/MyRequestsPage";
+import { VehicleFormPage } from "./features/vehicles/VehicleFormPage";
 import "./App.css";
 
 function App() {
@@ -22,6 +23,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/conductor/vehiculo"
+            element={
+              <ProtectedRoute>
+                <VehicleFormPage />
               </ProtectedRoute>
             }
           />

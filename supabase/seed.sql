@@ -79,6 +79,22 @@ where id in (
   '44444444-4444-4444-4444-444444444444'
 );
 
+-- Un vehículo por conductor sembrado: lo necesitan para poder publicar
+-- viajes (el trigger set_trip_vehicle exige que exista antes del insert).
+insert into public.vehicles (id, driver_id, placa, modelo, color, asientos)
+values
+  (
+    'cccccccc-0000-0000-0000-000000000001',
+    '11111111-1111-1111-1111-111111111111',
+    'ABC-123', 'Toyota Yaris', 'Gris', 4
+  ),
+  (
+    'cccccccc-0000-0000-0000-000000000002',
+    '22222222-2222-2222-2222-222222222222',
+    'XYZ-789', 'Hyundai Accent', 'Blanco', 3
+  )
+on conflict (id) do nothing;
+
 -- Dos viajes de ejemplo sobre Av. Javier Prado (San Isidro -> La Molina),
 -- uno por cada conductor sembrado. route_geom es una aproximación recta de
 -- la avenida (no viene de la Routes API real, solo para poder probar

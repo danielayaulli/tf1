@@ -26,6 +26,8 @@ export function HomePage() {
 
       {profile?.is_driver && (
         <nav>
+          <Link to="/conductor/vehiculo">Mi vehículo</Link>
+          {" · "}
           <Link to="/conductor/publicar">Publicar viaje</Link>
           {" · "}
           <Link to="/conductor/mis-viajes">Mis viajes</Link>

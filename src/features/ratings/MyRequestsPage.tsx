@@ -1,9 +1,44 @@
 import { useEffect, useState } from "react";
+import { APIProvider } from "@vis.gl/react-google-maps";
 import { useAuth } from "../auth/AuthContext";
-import { fetchMyRequests } from "../trips/api";
+import { fetchMyRequests, fetchTripRoutePoints } from "../trips/api";
 import type { PickupRequestWithTrip } from "../trips/api";
+import type { LatLng } from "../../lib/geo";
 import { fetchRatingsGiven } from "./api";
 import { RatingForm } from "./RatingForm";
+import { LiveTripMap } from "../location/LiveTripMap";
+
+function PassengerLiveMap({
+  tripId,
+  passengerId,
+  driverId,
+  driverName,
+}: {
+  tripId: string;
+  passengerId: string;
+  driverId: string;
+  driverName: string;
+}) {
+  const [route, setRoute] = useState<LatLng[] | null>(null);
+
+  useEffect(() => {
+    fetchTripRoutePoints(tripId).then(setRoute);
+  }, [tripId]);
+
+  if (!route || route.length === 0) return <p>Cargando mapa...</p>;
+
+  return (
+    <LiveTripMap
+      tripId={tripId}
+      route={route}
+      center={route[0]}
+      ownUserId={passengerId}
+      ownRole="passenger"
+      sharingActive
+      labels={{ [driverId]: driverName }}
+    />
+  );
+}
 
 export function MyRequestsPage() {
   const { profile } = useAuth();
@@ -52,6 +87,17 @@ export function MyRequestsPage() {
             Conductor: {req.driver?.nombre_pila ?? "—"} · Estado de tu solicitud: {req.status} · Estado del
             viaje: {req.trip?.status ?? "—"}
           </p>
+
+          {req.status === "accepted" && req.trip?.status === "ongoing" && profile && req.driver && (
+            <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+              <PassengerLiveMap
+                tripId={req.trip_id}
+                passengerId={profile.id}
+                driverId={req.driver.id}
+                driverName={req.driver.nombre_pila}
+              />
+            </APIProvider>
+          )}
 
           {req.status === "accepted" &&
             req.trip?.status === "finished" &&

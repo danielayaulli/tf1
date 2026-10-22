@@ -7,9 +7,10 @@ import { distanceToPolylineMeters } from "../../lib/distance";
 import { formatSexComposition } from "../../lib/composition";
 import { fetchNearbyTrips, fetchTripRoutePoints, requestPickup } from "./api";
 import type { NearbyTrip } from "./api";
+import { TEST_MODE, TEST_TOLERANCE_M } from "../../lib/testMode";
 
 const LIMA_CENTER = { lat: -12.09, lng: -77.02 };
-const TOLERANCE_M = 150;
+const TOLERANCE_M = TEST_MODE ? (TEST_TOLERANCE_M ?? 2000) : 150;
 
 function SearchTripsForm() {
   const { profile } = useAuth();
@@ -167,6 +168,11 @@ function SearchTripsForm() {
               {Math.round(trip.distance_m)} m de tu ubicación
             </p>
             <p>Pasajeros confirmados: {formatSexComposition(trip.men_count, trip.women_count)}</p>
+            {trip.vehicle_placa && (
+              <p>
+                Carro: {trip.vehicle_modelo} {trip.vehicle_color} — placa {trip.vehicle_placa}
+              </p>
+            )}
             <button
               type="button"
               onClick={() => handleStartRequest(trip.trip_id)}

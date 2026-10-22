@@ -20,6 +20,11 @@ punta, no que esté pulido.
   `supabase db push`.
 - **Google Maps JavaScript API + Routes API** (no Mapbox): mejor cobertura en
   Lima. Ver "Gotchas" abajo sobre por qué NO es `DirectionsService`.
+- **Supabase Realtime** (Postgres Changes) para la ubicación en vivo durante
+  un viaje `ongoing`: cada navegador hace upsert de su posición en
+  `live_locations` y se suscribe a los cambios de la fila de la otra parte.
+- **Vercel** para el despliegue (SPA estática + HTTPS gratis). Ver sección
+  "Despliegue" más abajo para los pasos exactos.
 - Node se instaló vía **nvm** (no Homebrew: el Homebrew de esta máquina es de
   2019 y está roto). Cada comando de shell necesita
   `export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`
@@ -36,6 +41,9 @@ punta, no que esté pulido.
       con PostGIS, composición de sexo, solicitar recojo con mapa)
 - [x] **Fase 4** — Puntuaciones (tabla `ratings`, trigger que recalcula
       `profiles.rating_avg`/`rating_count`, UI de calificación mutua)
+- [x] **Fase 5** — Prueba piloto: vehículo del conductor (gate antes de
+      publicar), ubicación en tiempo real por Supabase Realtime (RLS
+      controla quién ve a quién), modo prueba, despliegue en Vercel
 
 Detalle de qué se construyó y qué probar a mano en cada fase: ver las
 secciones "Fase N — qué se construyó" en [README.md](README.md).
@@ -83,7 +91,48 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
 - **Finalizar un viaje reutiliza el `grant update (status)` de la Fase 2**
   (`trips_update_own`): no hizo falta ninguna migración nueva para que el
   conductor pueda pasar un viaje a `finished`, ni restricción de que primero
-  pase por `ongoing` — se permite `scheduled -> finished` directo (MVP).
+  pase por `ongoing` — se permite `scheduled -> finished` directo (MVP). Para
+  la Fase 5 sí se usa el estado `ongoing` (botón "Iniciar viaje"): es lo que
+  activa la ubicación en vivo.
+- **`live_locations` usa columnas `lat`/`lng` sueltas (`double precision`),
+  NO `geography`.** Se probó y el problema es Realtime: Supabase manda los
+  cambios de fila tal cual los serializa la replicación lógica de Postgres,
+  y para un `geography` eso es WKB hexadecimal sin parsear, no GeoJSON — el
+  navegador tendría que decodificar WKB a mano en cada evento. Con columnas
+  numéricas simples, el payload ya trae `lat`/`lng` como números usables
+  directo. `point_in_lima()` no aplica a esta tabla a propósito: el modo
+  prueba puede fijar una ubicación manual que no esté exactamente sobre
+  Lima.
+- **La visibilidad de `live_locations` se implementa dos veces, a propósito**
+  (mismo patrón que `point_in_lima`/`isInLima`): las policies de RLS en
+  `supabase/migrations/20261022170000_live_locations.sql` son el control de
+  acceso real; `src/features/location/visibility.ts` (`canViewLocation`) es
+  un espejo en TypeScript de la misma regla, solo para poder testearla con
+  Vitest sin una base de datos (`visibility.test.ts`). Si cambias una
+  policy, cambia la otra también.
+- **Un conductor solo puede tener un vehículo** (`vehicles.driver_id` es
+  `unique`). El `insert` en `trips` pasa por un trigger `before insert`
+  (`set_trip_vehicle`) que autocompleta `vehicle_id` con el vehículo del
+  conductor y **rechaza el insert si no tiene ninguno registrado** — el gate
+  real está en la base de datos, no solo en el frontend
+  (`PublishTripPage` igual revisa antes, para dar un mejor mensaje).
+- **`nearby_trips` filtra por el tramo de ruta NO recorrido cuando el viaje
+  está `ongoing`.** Ubica la posición más reciente del conductor sobre
+  `route_geom` con `ST_LineLocatePoint` y recorta el tramo ya pasado con
+  `ST_LineSubstring`; si el conductor todavía no mandó ninguna posición, usa
+  la ruta completa como fallback. Es una aproximación por fracción de
+  vértices, no por distancia geográfica real — suficiente para el área
+  chica de Lima y la escala de este MVP.
+- **Verificación automática en modo prueba, sin guardar DNIs reales.** Para
+  la validación con personas reales (Fase 5), un DNI real de 8 dígitos
+  puede terminar en "9" o lo que sea y el mock lo rechazaría sin razón real.
+  En vez de hardcodear excepciones por DNI (lo que obligaría a guardar los
+  DNIs reales de quienes prueban, en código o en el repo), el Edge Function
+  `verify-identity` lee el secret `TEST_MODE_AUTO_VERIFY` (nunca committeado,
+  se activa con `supabase secrets set TEST_MODE_AUTO_VERIFY=true` solo
+  durante la prueba): si está en `"true"`, aprueba a cualquiera sin importar
+  el DNI. Recuerda desactivarlo (`supabase secrets unset
+  TEST_MODE_AUTO_VERIFY`) al terminar la prueba piloto.
 
 ## Gotchas (para no volver a perder tiempo en esto)
 
@@ -119,12 +168,84 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
   hasta que el usuario confirme su correo e inicie sesión.
 - **Homebrew de esta máquina es de 2019 y está roto** (`brew install node`
   falla). Node se maneja con nvm, no con brew.
+- **Agregar una tabla a Realtime no es automático.** `alter table ... enable
+  row level security` no basta para que Postgres Changes mande eventos: hay
+  que hacer también `alter publication supabase_realtime add table
+  <tabla>;` (ver la migración de `live_locations`), o el navegador se queda
+  esperando eventos que nunca llegan, sin ningún error visible.
+- **La Screen Wake Lock API (`navigator.wakeLock`) requiere HTTPS** (o
+  `localhost`) y falla silenciosamente si no está soportada — no lanza un
+  error que rompa la app, pero en `npm run dev` por IP de la red local
+  (en vez de `localhost`) no va a funcionar; para probar con el celular por
+  wifi, usar `localhost` vía túnel o ya directamente la build desplegada en
+  Vercel (HTTPS).
+- **`watchPosition` en iPhone Safari puede devolver lecturas con `accuracy`
+  de cientos de metros** (mala señal, interiores). Se descartan las lecturas
+  con `accuracy` > 100 m en `useGeolocation` — si ves el marcador "saltando"
+  en el mapa, revisa primero si de verdad es una lectura mala antes de
+  pensar que es un bug de renderizado.
+- **Vercel necesita un rewrite a `index.html`** (`vercel.json` en la raíz)
+  porque esto es una SPA con `BrowserRouter`: sin eso, recargar la página en
+  cualquier ruta que no sea `/` (ej. `/conductor/mis-viajes`) da 404.
 
 ## Qué falta
 
 - **Avenida automática desde la ruta** (ver "Decisiones importantes" arriba):
   evaluado, deferred por complejidad/confiabilidad.
-- **Diagrama de la base de datos** en el README: pendiente, se agregará al
-  cerrar la Fase 4 junto con el esquema completo.
-- Nada de esto se ha desplegado a un dominio público; todo corre local con
-  `npm run dev` contra el proyecto de Supabase en la nube.
+- **Diagrama de la base de datos** en el README: pendiente.
+- **Un conductor solo puede registrar un vehículo** (no hay UI para varios
+  ni para elegir cuál usar en cada viaje). Suficiente para el MVP.
+- **`live_locations` no guarda historial**, solo la última posición por
+  usuario (se sobreescribe con cada upsert): no hay replay del recorrido
+  después de que el viaje termina.
+- El filtro de "tramo no recorrido" en `nearby_trips` depende de que el
+  conductor ya haya mandado al menos una posición; si recién arrancó el
+  viaje y todavía no llegó la primera lectura de GPS, se usa la ruta
+  completa como fallback (una ventana de pocos segundos, no debería notarse
+  en la práctica).
+- Ver la sección "Despliegue" más abajo para pasar de `npm run dev` local a
+  Vercel.
+
+## Despliegue
+
+Pasos exactos para pasar de `localhost:5173` a una URL pública con HTTPS en
+Vercel. El resumen corto para la persona que ejecuta esto está en el README
+(sección "Despliegue en Vercel"); aquí va el detalle con el porqué de cada
+paso.
+
+1. **Conectar el repositorio.** En [vercel.com](https://vercel.com) → "Add
+   New" → "Project" → importar este repositorio de GitHub. Framework
+   preset: Vite (debería detectarlo solo). Build command `npm run build`,
+   output directory `dist` (son los defaults de Vite, no hace falta
+   tocarlos).
+2. **Variables de entorno** (Project Settings → Environment Variables),
+   las mismas claves que `.env.example`, con los valores reales:
+   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (Supabase → Project
+     Settings → API). **Nunca** la `service_role` key aquí: esta es la app
+     de cliente, no un backend; la `service_role` solo vive en el secret
+     del Edge Function.
+   - `VITE_GOOGLE_MAPS_API_KEY`. En Google Cloud Console, edita la key y
+     agrega el dominio de Vercel (`https://tu-proyecto.vercel.app/*`) a
+     "Application restrictions → HTTP referrers", o las llamadas a Maps
+     fallarán en producción aunque funcionen en local.
+   - `VITE_TEST_MODE` / `VITE_TEST_TOLERANCE_M`: déjalos en `false` salvo
+     que la prueba piloto los necesite también en producción.
+3. **Deploy.** Vercel construye y publica solo; cada push a la rama
+   conectada vuelve a desplegar.
+4. **`vercel.json`** (ya está en la raíz del repo) agrega un rewrite de
+   cualquier ruta a `index.html`: sin esto, recargar la página en
+   `/conductor/mis-viajes` (o cualquier ruta que no sea `/`) da 404, porque
+   React Router maneja el ruteo en el cliente y Vercel por defecto busca un
+   archivo físico en esa ruta.
+5. **Supabase Auth → URL Configuration** (Authentication → URL
+   Configuration en el dashboard del proyecto):
+   - **Site URL**: la URL de Vercel (ej. `https://tf1.vercel.app`).
+   - **Redirect URLs**: agrega esa misma URL (y `https://tf1.vercel.app/**`
+     si Supabase pide un patrón). No es estrictamente necesario para
+     login/registro con email+contraseña sin links de confirmación (que
+     están desactivados, ver Gotchas), pero sí lo es si en algún momento se
+     reactiva "Confirm email" o se agrega login social.
+6. **Verificar en el celular.** Abre la URL de Vercel en Safari de iPhone,
+   no en modo privado (para que `localStorage`/la sesión persistan), y
+   confirma que pide el permiso de ubicación al llegar a un viaje
+   `ongoing` (ver Gotchas sobre Wake Lock y HTTPS).

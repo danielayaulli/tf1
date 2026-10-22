@@ -1,10 +1,50 @@
 import { useEffect, useState } from "react";
+import { APIProvider } from "@vis.gl/react-google-maps";
 import { useAuth } from "../auth/AuthContext";
-import { fetchMyTrips, fetchRequestsForTrips, finishTrip, respondToRequest } from "./api";
+import {
+  fetchMyTrips,
+  fetchRequestsForTrips,
+  fetchTripRoutePoints,
+  finishTrip,
+  respondToRequest,
+  startTrip,
+} from "./api";
 import type { PickupRequestWithPassenger } from "./api";
 import type { Trip } from "../../types/trip";
+import type { LatLng } from "../../lib/geo";
 import { fetchRatingsGiven } from "../ratings/api";
 import { RatingForm } from "../ratings/RatingForm";
+import { LiveTripMap } from "../location/LiveTripMap";
+
+function DriverLiveMap({
+  tripId,
+  driverId,
+  labels,
+}: {
+  tripId: string;
+  driverId: string;
+  labels: Record<string, string>;
+}) {
+  const [route, setRoute] = useState<LatLng[] | null>(null);
+
+  useEffect(() => {
+    fetchTripRoutePoints(tripId).then(setRoute);
+  }, [tripId]);
+
+  if (!route || route.length === 0) return <p>Cargando mapa...</p>;
+
+  return (
+    <LiveTripMap
+      tripId={tripId}
+      route={route}
+      center={route[0]}
+      ownUserId={driverId}
+      ownRole="driver"
+      sharingActive
+      labels={labels}
+    />
+  );
+}
 
 export function MyTripsPage() {
   const { profile } = useAuth();
@@ -66,6 +106,16 @@ export function MyTripsPage() {
     }
   }
 
+  async function handleStart(tripId: string) {
+    setError(null);
+    try {
+      await startTrip(tripId);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al iniciar el viaje.");
+    }
+  }
+
   if (loading) return <p>Cargando tus viajes...</p>;
 
   return (
@@ -78,6 +128,9 @@ export function MyTripsPage() {
         const requests = requestsByTrip.get(trip.id) ?? [];
         const pending = requests.filter((r) => r.status === "pending");
         const accepted = requests.filter((r) => r.status === "accepted");
+        const labels = Object.fromEntries(
+          accepted.map((r) => [r.passenger_id, r.passenger?.nombre_pila ?? "Pasajero"]),
+        );
         return (
           <section key={trip.id} className="trip-card">
             <h2>{trip.avenida}</h2>
@@ -86,10 +139,21 @@ export function MyTripsPage() {
               Asientos: {trip.seats_available} / {trip.seats_total} libres · Estado: {trip.status}
             </p>
 
+            {trip.status === "scheduled" && (
+              <button type="button" onClick={() => handleStart(trip.id)}>
+                Iniciar viaje
+              </button>
+            )}
             {(trip.status === "scheduled" || trip.status === "ongoing") && (
               <button type="button" onClick={() => handleFinish(trip.id)}>
                 Finalizar viaje
               </button>
+            )}
+
+            {trip.status === "ongoing" && profile && (
+              <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+                <DriverLiveMap tripId={trip.id} driverId={profile.id} labels={labels} />
+              </APIProvider>
             )}
 
             {pending.length > 0 && (
