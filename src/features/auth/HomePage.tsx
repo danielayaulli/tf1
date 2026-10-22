@@ -26,6 +26,12 @@ export function HomePage() {
         </nav>
       )}
 
+      {profile?.is_passenger && (
+        <nav>
+          <Link to="/pasajero/buscar">Buscar viajes</Link>
+        </nav>
+      )}
+
       <button onClick={() => logoutUser()}>Cerrar sesión</button>
     </div>
   );

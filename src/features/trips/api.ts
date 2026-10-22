@@ -70,3 +70,48 @@ export async function respondToRequest(requestId: string, status: PickupRequestS
   const { error } = await supabase.from("pickup_requests").update({ status }).eq("id", requestId);
   if (error) throw error;
 }
+
+export interface NearbyTrip {
+  trip_id: string;
+  avenida: string;
+  departure_time: string;
+  seats_total: number;
+  seats_available: number;
+  distance_m: number;
+  driver_nombre_pila: string;
+  driver_rating_avg: number | null;
+  driver_rating_count: number;
+  men_count: number;
+  women_count: number;
+}
+
+export async function fetchNearbyTrips(point: LatLng, toleranceM = 150): Promise<NearbyTrip[]> {
+  const { data, error } = await supabase.rpc("nearby_trips", {
+    passenger_lat: point.lat,
+    passenger_lng: point.lng,
+    tolerance_m: toleranceM,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function fetchTripRoutePoints(tripId: string): Promise<LatLng[]> {
+  const { data, error } = await supabase.rpc("trip_route_points", { p_trip_id: tripId });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export interface RequestPickupInput {
+  tripId: string;
+  passengerId: string;
+  pickupPoint: LatLng;
+}
+
+export async function requestPickup(input: RequestPickupInput) {
+  const { error } = await supabase.from("pickup_requests").insert({
+    trip_id: input.tripId,
+    passenger_id: input.passengerId,
+    pickup_point: pointToWkt(input.pickupPoint),
+  });
+  if (error) throw error;
+}

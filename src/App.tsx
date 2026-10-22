@@ -6,6 +6,7 @@ import { ProtectedRoute } from "./features/auth/ProtectedRoute";
 import { RegisterPage } from "./features/auth/RegisterPage";
 import { MyTripsPage } from "./features/trips/MyTripsPage";
 import { PublishTripPage } from "./features/trips/PublishTripPage";
+import { SearchTripsPage } from "./features/trips/SearchTripsPage";
 import "./App.css";
 
 function App() {
@@ -36,6 +37,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <MyTripsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pasajero/buscar"
+            element={
+              <ProtectedRoute>
+                <SearchTripsPage />
               </ProtectedRoute>
             }
           />

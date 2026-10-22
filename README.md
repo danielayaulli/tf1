@@ -53,7 +53,7 @@ datos se irán completando a medida que avancen:
 - [x] Fase 0 — Setup del proyecto (Vite + React + TS, Supabase CLI, estructura de carpetas)
 - [x] Fase 1 — Base de datos y autenticación
 - [x] Fase 2 — Viajes del conductor
-- [ ] Fase 3 — Búsqueda y solicitudes del pasajero
+- [x] Fase 3 — Búsqueda y solicitudes del pasajero
 - [ ] Fase 4 — Puntuaciones
 
 ### Fase 1 — qué se construyó
@@ -132,6 +132,43 @@ datos se irán completando a medida que avancen:
 4. Prueba también el bloqueo geográfico: si usas la consola del navegador
    para forzar un punto fuera de Lima, el `CHECK` de la base de datos lo
    rechaza aunque se salte la validación del cliente.
+
+### Fase 3 — qué se construyó
+
+- RPC `nearby_trips(passenger_lat, passenger_lng, tolerance_m default 150)`:
+  usa `ST_DWithin`/`ST_Distance` de PostGIS para encontrar viajes
+  `scheduled` con asientos libres cuya ruta pasa a menos de
+  `tolerance_m` metros de un punto, y devuelve también la composición de
+  sexo (conteo de `pickup_requests` aceptadas por sexo) y el nombre de
+  pila + estrellas del conductor. `security definer` porque necesita leer
+  `profiles.sexo` de otros usuarios para el conteo agregado.
+- RPC `trip_route_points(trip_id)`: devuelve los puntos de la ruta de un
+  viaje, usada solo para dar feedback inmediato en el cliente al elegir el
+  punto de recojo (la restricción real sigue siendo el `CHECK` de Lima).
+- [`src/lib/distance.ts`](src/lib/distance.ts): distancia punto-polilínea
+  (fórmula de Haversine + proyección local), usada para ese feedback.
+  [`src/lib/composition.ts`](src/lib/composition.ts): formatea la
+  composición de sexo (`"solo mujeres"`, `"3 hombres, 2 mujeres"`, etc.).
+  Ambas con tests.
+- Página `/pasajero/buscar`: el pasajero marca su ubicación en el mapa,
+  ve los viajes cercanos con su composición de sexo (para decidir si
+  subirse antes de pedir el recojo), y al solicitar recojo elige el punto
+  en el mapa sobre la ruta del viaje.
+- Probado de punta a punta en el navegador: un pasajero real solicitó
+  recojo desde la UI y el conductor aceptó la solicitud desde "Mis
+  viajes", confirmando que todo el flujo (no solo los datos sembrados)
+  funciona.
+
+### Qué probar a mano (Fase 3)
+
+1. Entra con `pasajero1@example.com` / `password123` → "Buscar viajes" →
+   marca un punto cerca de Javier Prado (San Isidro - La Molina) → "Buscar
+   viajes". Deberías ver los 2 viajes sembrados con su composición de sexo.
+2. Pulsa "Solicitar recojo" en uno, elige un punto sobre la línea azul de
+   la ruta y confirma. El botón debe cambiar a "Solicitud enviada".
+3. Entra con el conductor dueño de ese viaje (`conductor1` o `conductor2`)
+   → "Mis viajes" → deberías ver la nueva solicitud pendiente y poder
+   aceptarla/rechazarla.
 
 ## Estructura de carpetas
 
