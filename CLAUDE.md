@@ -187,6 +187,18 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
 - **Vercel necesita un rewrite a `index.html`** (`vercel.json` en la raíz)
   porque esto es una SPA con `BrowserRouter`: sin eso, recargar la página en
   cualquier ruta que no sea `/` (ej. `/conductor/mis-viajes`) da 404.
+- **El proyecto de Vercel está conectado a `danielayaulli/trabajofinal1`
+  (rama `main`), NO a `danielayaulli/tf1` (rama `master`).** Al conectar
+  Vercel la primera vez se creó sin querer un repo nuevo (`trabajofinal1`,
+  con un solo commit "Initial commit" co-autoreado por `vercel-commit`) en
+  vez de usar el repo real. Se resolvió agregando un segundo remoto local
+  (`git remote add vercel https://github.com/danielayaulli/trabajofinal1.git`)
+  y sobrescribiendo ese commit con el historial real
+  (`git push vercel master:main --force`). **Para que un cambio llegue a lo
+  desplegado, además del push normal a `origin` hay que correr:**
+  `git push vercel master:main`. Si en algún momento se reconecta Vercel
+  directo al repo `tf1` (Project Settings → Git), este paso extra deja de
+  ser necesario.
 
 ## Qué falta
 
