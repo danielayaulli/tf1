@@ -7,14 +7,10 @@
 -- 3333...33 | pasajero1@example.com  | pasajero          | M
 -- 4444...44 | pasajero2@example.com  | pasajero          | F
 
--- Borra cualquier corrida anterior del seed para que este archivo sea
--- idempotente (se puede volver a correr sin duplicar ni chocar con datos viejos).
-delete from auth.users where id in (
-  '11111111-1111-1111-1111-111111111111',
-  '22222222-2222-2222-2222-222222222222',
-  '33333333-3333-3333-3333-333333333333',
-  '44444444-4444-4444-4444-444444444444'
-);
+-- Este archivo es idempotente vía "on conflict ... do nothing" en cada
+-- insert (nunca DELETE): se puede volver a correr sin duplicar datos y sin
+-- chocar con viajes/solicitudes reales que se hayan creado desde la app
+-- (ej. publicando un viaje de prueba con estos mismos usuarios).
 
 -- Los campos *_token / *_change deben ir como '' (no NULL): GoTrue falla con
 -- "Database error querying schema" si intenta leerlos como NULL.
@@ -85,13 +81,8 @@ where id in (
 
 -- Dos viajes de ejemplo sobre Av. Javier Prado (San Isidro -> La Molina),
 -- uno por cada conductor sembrado. route_geom es una aproximación recta de
--- la avenida (no viene de la Directions API real, solo para poder probar
+-- la avenida (no viene de la Routes API real, solo para poder probar
 -- cercanía a la ruta en la Fase 3).
-delete from public.trips where id in (
-  'aaaaaaaa-0000-0000-0000-000000000001',
-  'aaaaaaaa-0000-0000-0000-000000000002'
-);
-
 insert into public.trips (
   id, driver_id, origin, destination, route_geom, avenida,
   departure_time, seats_total, seats_available, status
@@ -115,18 +106,26 @@ insert into public.trips (
     'Av. Javier Prado',
     now() + interval '1 day',
     3, 3, 'scheduled'
-  );
+  )
+on conflict (id) do nothing;
 
--- Una solicitud pendiente de ejemplo (pasajero1 pidiendo recojo en el viaje
--- del conductor1), para poder probar aceptar/rechazar sin pasar todavía por
--- el flujo de búsqueda del pasajero (Fase 3).
-delete from public.pickup_requests where id = 'bbbbbbbb-0000-0000-0000-000000000001';
-
+-- Dos solicitudes pendientes de ejemplo (una por cada viaje/conductor
+-- sembrado), para poder probar aceptar/rechazar sin pasar todavía por el
+-- flujo de búsqueda del pasajero (Fase 3).
 insert into public.pickup_requests (id, trip_id, passenger_id, pickup_point, status)
-values (
-  'bbbbbbbb-0000-0000-0000-000000000001',
-  'aaaaaaaa-0000-0000-0000-000000000001',
-  '33333333-3333-3333-3333-333333333333',
-  'SRID=4326;POINT(-77.0030 -12.0875)',
-  'pending'
-);
+values
+  (
+    'bbbbbbbb-0000-0000-0000-000000000001',
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    '33333333-3333-3333-3333-333333333333',
+    'SRID=4326;POINT(-77.0030 -12.0875)',
+    'pending'
+  ),
+  (
+    'bbbbbbbb-0000-0000-0000-000000000002',
+    'aaaaaaaa-0000-0000-0000-000000000002',
+    '44444444-4444-4444-4444-444444444444',
+    'SRID=4326;POINT(-77.0030 -12.0875)',
+    'pending'
+  )
+on conflict (id) do nothing;
