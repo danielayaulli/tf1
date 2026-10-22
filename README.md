@@ -52,7 +52,7 @@ datos se irán completando a medida que avancen:
 
 - [x] Fase 0 — Setup del proyecto (Vite + React + TS, Supabase CLI, estructura de carpetas)
 - [x] Fase 1 — Base de datos y autenticación
-- [ ] Fase 2 — Viajes del conductor
+- [x] Fase 2 — Viajes del conductor
 - [ ] Fase 3 — Búsqueda y solicitudes del pasajero
 - [ ] Fase 4 — Puntuaciones
 
@@ -95,6 +95,43 @@ datos se irán completando a medida que avancen:
 > Nota: en el proyecto de Supabase, en Authentication → Sign In / Providers →
 > Email, desactiva "Confirm email" para que el registro no dependa de un
 > correo de confirmación (el plan gratuito tiene un límite de envío muy bajo).
+
+### Fase 2 — qué se construyó
+
+- Tablas `trips` y `pickup_requests` con RLS: cualquier usuario verificado
+  puede ver los viajes; solo el conductor dueño puede publicarlos/editarlos;
+  las solicitudes solo las ve el pasajero dueño o el conductor del viaje.
+- Restricción a Lima: función SQL `point_in_lima()` como `CHECK` constraint
+  en `origin`, `destination` y `pickup_point` (además de la validación en el
+  cliente, ver [`src/lib/geo.ts`](src/lib/geo.ts)).
+- Trigger `on_pickup_request_status_change`: al aceptar una solicitud resta
+  un asiento del viaje (y lo repone si se cancela/rechaza después de
+  aceptada); rechaza el `UPDATE` si ya no hay asientos.
+- Página `/conductor/publicar`: mapa (Google Maps JS API) donde el conductor
+  marca origen/destino con clics, calcula la ruta con
+  `google.maps.routes.Route.computeRoutes` (la Directions API legacy ya no
+  se habilita en proyectos nuevos de Google Cloud) y la dibuja; valida que
+  ambos puntos estén en Lima antes de publicar.
+- Página `/conductor/mis-viajes`: lista los viajes del conductor con sus
+  solicitudes pendientes (nombre de pila + estrellas del pasajero) y botones
+  para aceptar/rechazar.
+- Seed: dos viajes de ejemplo sobre Av. Javier Prado (uno por conductor) y
+  una solicitud pendiente de `pasajero1` sobre el viaje de `conductor1`.
+
+### Qué probar a mano (Fase 2)
+
+1. Entra con `conductor1@example.com` / `password123` → en el Home verás los
+   links "Publicar viaje" y "Mis viajes" (solo visibles para conductores).
+2. En **Mis viajes** verás el viaje sembrado con una solicitud pendiente de
+   "Jorge" → acepta o rechaza y confirma que los asientos disponibles
+   cambian.
+3. En **Publicar viaje**: clic en "Elegir origen", clic en el mapa; clic en
+   "Elegir destino", clic en otro punto; "Calcular ruta" (debería dibujar
+   una polilínea azul); completa avenida/hora/asientos y publica. Debería
+   aparecer en "Mis viajes".
+4. Prueba también el bloqueo geográfico: si usas la consola del navegador
+   para forzar un punto fuera de Lima, el `CHECK` de la base de datos lo
+   rechaza aunque se salte la validación del cliente.
 
 ## Estructura de carpetas
 

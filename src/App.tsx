@@ -4,6 +4,8 @@ import { HomePage } from "./features/auth/HomePage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { ProtectedRoute } from "./features/auth/ProtectedRoute";
 import { RegisterPage } from "./features/auth/RegisterPage";
+import { MyTripsPage } from "./features/trips/MyTripsPage";
+import { PublishTripPage } from "./features/trips/PublishTripPage";
 import "./App.css";
 
 function App() {
@@ -18,6 +20,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/conductor/publicar"
+            element={
+              <ProtectedRoute>
+                <PublishTripPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/conductor/mis-viajes"
+            element={
+              <ProtectedRoute>
+                <MyTripsPage />
               </ProtectedRoute>
             }
           />

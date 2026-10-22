@@ -82,3 +82,51 @@ where id in (
   '33333333-3333-3333-3333-333333333333',
   '44444444-4444-4444-4444-444444444444'
 );
+
+-- Dos viajes de ejemplo sobre Av. Javier Prado (San Isidro -> La Molina),
+-- uno por cada conductor sembrado. route_geom es una aproximación recta de
+-- la avenida (no viene de la Directions API real, solo para poder probar
+-- cercanía a la ruta en la Fase 3).
+delete from public.trips where id in (
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  'aaaaaaaa-0000-0000-0000-000000000002'
+);
+
+insert into public.trips (
+  id, driver_id, origin, destination, route_geom, avenida,
+  departure_time, seats_total, seats_available, status
+) values
+  (
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    '11111111-1111-1111-1111-111111111111',
+    'SRID=4326;POINT(-77.0428 -12.0927)',
+    'SRID=4326;POINT(-76.9706 -12.0810)',
+    'SRID=4326;LINESTRING(-77.0428 -12.0927, -77.0030 -12.0875, -76.9706 -12.0810)',
+    'Av. Javier Prado',
+    now() + interval '2 hours',
+    4, 3, 'scheduled'
+  ),
+  (
+    'aaaaaaaa-0000-0000-0000-000000000002',
+    '22222222-2222-2222-2222-222222222222',
+    'SRID=4326;POINT(-77.0428 -12.0927)',
+    'SRID=4326;POINT(-76.9706 -12.0810)',
+    'SRID=4326;LINESTRING(-77.0428 -12.0927, -77.0030 -12.0875, -76.9706 -12.0810)',
+    'Av. Javier Prado',
+    now() + interval '1 day',
+    3, 3, 'scheduled'
+  );
+
+-- Una solicitud pendiente de ejemplo (pasajero1 pidiendo recojo en el viaje
+-- del conductor1), para poder probar aceptar/rechazar sin pasar todavía por
+-- el flujo de búsqueda del pasajero (Fase 3).
+delete from public.pickup_requests where id = 'bbbbbbbb-0000-0000-0000-000000000001';
+
+insert into public.pickup_requests (id, trip_id, passenger_id, pickup_point, status)
+values (
+  'bbbbbbbb-0000-0000-0000-000000000001',
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  '33333333-3333-3333-3333-333333333333',
+  'SRID=4326;POINT(-77.0030 -12.0875)',
+  'pending'
+);
