@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { fetchMyTrips, fetchRequestsForTrips, respondToRequest } from "./api";
+import { fetchMyTrips, fetchRequestsForTrips, finishTrip, respondToRequest } from "./api";
 import type { PickupRequestWithPassenger } from "./api";
 import type { Trip } from "../../types/trip";
+import { fetchRatingsGiven } from "../ratings/api";
+import { RatingForm } from "../ratings/RatingForm";
 
 export function MyTripsPage() {
   const { profile } = useAuth();
@@ -10,6 +12,7 @@ export function MyTripsPage() {
   const [requestsByTrip, setRequestsByTrip] = useState<Map<string, PickupRequestWithPassenger[]>>(
     new Map(),
   );
+  const [ratedPairs, setRatedPairs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,8 +29,11 @@ export function MyTripsPage() {
         list.push(r);
         grouped.set(r.trip_id, list);
       }
+      const finishedTripIds = myTrips.filter((t) => t.status === "finished").map((t) => t.id);
+      const ratingsGiven = await fetchRatingsGiven(profile.id, finishedTripIds);
       setTrips(myTrips);
       setRequestsByTrip(grouped);
+      setRatedPairs(new Set(ratingsGiven.map((r) => `${r.trip_id}:${r.rated_id}`)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar tus viajes.");
     } finally {
@@ -50,6 +56,16 @@ export function MyTripsPage() {
     }
   }
 
+  async function handleFinish(tripId: string) {
+    setError(null);
+    try {
+      await finishTrip(tripId);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al finalizar el viaje.");
+    }
+  }
+
   if (loading) return <p>Cargando tus viajes...</p>;
 
   return (
@@ -61,6 +77,7 @@ export function MyTripsPage() {
       {trips.map((trip) => {
         const requests = requestsByTrip.get(trip.id) ?? [];
         const pending = requests.filter((r) => r.status === "pending");
+        const accepted = requests.filter((r) => r.status === "accepted");
         return (
           <section key={trip.id} className="trip-card">
             <h2>{trip.avenida}</h2>
@@ -68,6 +85,12 @@ export function MyTripsPage() {
             <p>
               Asientos: {trip.seats_available} / {trip.seats_total} libres · Estado: {trip.status}
             </p>
+
+            {(trip.status === "scheduled" || trip.status === "ongoing") && (
+              <button type="button" onClick={() => handleFinish(trip.id)}>
+                Finalizar viaje
+              </button>
+            )}
 
             {pending.length > 0 && (
               <div>
@@ -87,14 +110,30 @@ export function MyTripsPage() {
               </div>
             )}
 
-            {requests.filter((r) => r.status === "accepted").length > 0 && (
+            {accepted.length > 0 && (
               <p>
-                Pasajeros confirmados:{" "}
-                {requests
-                  .filter((r) => r.status === "accepted")
-                  .map((r) => r.passenger?.nombre_pila ?? "Pasajero")
-                  .join(", ")}
+                Pasajeros confirmados: {accepted.map((r) => r.passenger?.nombre_pila ?? "Pasajero").join(", ")}
               </p>
+            )}
+
+            {trip.status === "finished" && accepted.length > 0 && profile && (
+              <div>
+                <h3>Calificar pasajeros</h3>
+                {accepted.map((req) =>
+                  ratedPairs.has(`${trip.id}:${req.passenger_id}`) ? (
+                    <p key={req.id}>Ya calificaste a {req.passenger?.nombre_pila ?? "este pasajero"}.</p>
+                  ) : (
+                    <RatingForm
+                      key={req.id}
+                      tripId={trip.id}
+                      raterId={profile.id}
+                      ratedId={req.passenger_id}
+                      ratedName={req.passenger?.nombre_pila ?? "este pasajero"}
+                      onSubmitted={loadData}
+                    />
+                  ),
+                )}
+              </div>
             )}
           </section>
         );

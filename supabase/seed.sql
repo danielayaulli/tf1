@@ -106,6 +106,19 @@ insert into public.trips (
     'Av. Javier Prado',
     now() + interval '1 day',
     3, 3, 'scheduled'
+  ),
+  -- Viaje ya finalizado, para poder probar la Fase 4 (calificaciones) de
+  -- inmediato sin tener que primero publicar un viaje, aceptar una
+  -- solicitud y marcarlo como finalizado a mano.
+  (
+    'aaaaaaaa-0000-0000-0000-000000000003',
+    '11111111-1111-1111-1111-111111111111',
+    'SRID=4326;POINT(-77.0428 -12.0927)',
+    'SRID=4326;POINT(-76.9706 -12.0810)',
+    'SRID=4326;LINESTRING(-77.0428 -12.0927, -77.0030 -12.0875, -76.9706 -12.0810)',
+    'Av. Javier Prado',
+    now() - interval '1 day',
+    4, 3, 'finished'
   )
 on conflict (id) do nothing;
 
@@ -127,5 +140,12 @@ values
     '44444444-4444-4444-4444-444444444444',
     'SRID=4326;POINT(-77.0030 -12.0875)',
     'pending'
+  ),
+  (
+    'bbbbbbbb-0000-0000-0000-000000000003',
+    'aaaaaaaa-0000-0000-0000-000000000003',
+    '44444444-4444-4444-4444-444444444444',
+    'SRID=4326;POINT(-77.0030 -12.0875)',
+    'accepted'
   )
 on conflict (id) do nothing;

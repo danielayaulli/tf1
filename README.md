@@ -54,7 +54,7 @@ datos se irán completando a medida que avancen:
 - [x] Fase 1 — Base de datos y autenticación
 - [x] Fase 2 — Viajes del conductor
 - [x] Fase 3 — Búsqueda y solicitudes del pasajero
-- [ ] Fase 4 — Puntuaciones
+- [x] Fase 4 — Puntuaciones
 
 ### Fase 1 — qué se construyó
 
@@ -169,6 +169,43 @@ datos se irán completando a medida que avancen:
 3. Entra con el conductor dueño de ese viaje (`conductor1` o `conductor2`)
    → "Mis viajes" → deberías ver la nueva solicitud pendiente y poder
    aceptarla/rechazarla.
+
+### Fase 4 — qué se construyó
+
+- Tabla `ratings` (`trip_id`, `rater_id`, `rated_id`, `stars` 1-5, `comment`
+  opcional) con RLS: solo se puede calificar a la contraparte (conductor ↔
+  pasajero aceptado) de un viaje ya `finished`, y solo una vez por par
+  (índice único `trip_id, rater_id, rated_id`). Cada usuario solo ve las
+  calificaciones que dio o recibió.
+- Trigger `on_rating_insert`: recalcula `profiles.rating_avg`/`rating_count`
+  del calificado tras cada `insert` en `ratings`. `security definer` porque
+  quien califica no tiene permiso de `UPDATE` sobre esas columnas de otro
+  perfil.
+- Botón "Finalizar viaje" en `/conductor/mis-viajes` (usa el `grant update
+  (status)` que ya existía desde la Fase 2, sin migración nueva).
+- Página `/pasajero/mis-solicitudes`: lista las solicitudes del pasajero con
+  el conductor y el estado del viaje; si el viaje terminó y la solicitud fue
+  aceptada, muestra el formulario para calificar al conductor.
+- En `/conductor/mis-viajes`, cuando un viaje está `finished`, aparece un
+  formulario para calificar a cada pasajero aceptado.
+- El promedio y conteo de calificaciones (`rating_avg`/`rating_count`) ahora
+  se muestran en el Home de cada usuario.
+- Seed: un tercer viaje de `conductor1` ya `finished` con una solicitud
+  `accepted` de `pasajero2`, para poder probar la calificación de inmediato.
+
+### Qué probar a mano (Fase 4)
+
+1. Entra con `conductor1@example.com` / `password123` → "Mis viajes": el
+   viaje sembrado en estado `finished` debería mostrar "Calificar
+   pasajeros" con un formulario para Ana (`pasajero2`). Envíalo.
+2. Entra con `pasajero2@example.com` / `password123` → "Mis solicitudes":
+   la solicitud de ese mismo viaje debería mostrar el formulario para
+   calificar a Carlos (`conductor1`). Envíalo.
+3. Verifica en el Home de ambos usuarios que "Tu calificación" ahora
+   muestre el promedio y conteo actualizados.
+4. Prueba también el ciclo completo: en "Mis viajes", pulsa "Finalizar
+   viaje" en uno de los viajes `scheduled` con un pasajero aceptado, y
+   confirma que aparece el formulario de calificación para ese viaje.
 
 ## Estructura de carpetas
 

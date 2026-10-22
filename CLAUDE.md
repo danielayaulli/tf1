@@ -34,7 +34,8 @@ punta, no que esté pulido.
       de asientos, publicar viaje con mapa, aceptar/rechazar solicitudes)
 - [x] **Fase 3** — Búsqueda y solicitudes del pasajero (RPC `nearby_trips`
       con PostGIS, composición de sexo, solicitar recojo con mapa)
-- [ ] **Fase 4** — Puntuaciones (pendiente)
+- [x] **Fase 4** — Puntuaciones (tabla `ratings`, trigger que recalcula
+      `profiles.rating_avg`/`rating_count`, UI de calificación mutua)
 
 Detalle de qué se construyó y qué probar a mano en cada fase: ver las
 secciones "Fase N — qué se construyó" en [README.md](README.md).
@@ -73,6 +74,16 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
   (la Routes API no da un campo "nombre de calle" estructurado, solo texto
   libre de instrucciones de navegación que habría que parsear con regex).
   Queda **pendiente / deferred** si se quiere retomar.
+- **`ratings` no tiene policy de `update`/`delete`.** Una calificación es
+  definitiva una vez enviada (evita que alguien la edite después de ver la
+  calificación que recibió a cambio). El índice único
+  `(trip_id, rater_id, rated_id)` es lo que realmente impide calificar dos
+  veces al mismo par en el mismo viaje; el cliente solo usa esa info para
+  ocultar el formulario, no para bloquear el insert.
+- **Finalizar un viaje reutiliza el `grant update (status)` de la Fase 2**
+  (`trips_update_own`): no hizo falta ninguna migración nueva para que el
+  conductor pueda pasar un viaje a `finished`, ni restricción de que primero
+  pase por `ongoing` — se permite `scheduled -> finished` directo (MVP).
 
 ## Gotchas (para no volver a perder tiempo en esto)
 
@@ -111,10 +122,6 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
 
 ## Qué falta
 
-- **Fase 4 — Puntuaciones:** calificación mutua (1-5 estrellas + comentario
-  opcional) al finalizar un viaje, promedio visible en el perfil
-  (`profiles.rating_avg`/`rating_count` ya existen como columnas, pendiente
-  la tabla `ratings`, el trigger que recalcula el promedio, y la UI).
 - **Avenida automática desde la ruta** (ver "Decisiones importantes" arriba):
   evaluado, deferred por complejidad/confiabilidad.
 - **Diagrama de la base de datos** en el README: pendiente, se agregará al

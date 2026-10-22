@@ -71,6 +71,49 @@ export async function respondToRequest(requestId: string, status: PickupRequestS
   if (error) throw error;
 }
 
+export async function finishTrip(tripId: string) {
+  const { error } = await supabase.from("trips").update({ status: "finished" }).eq("id", tripId);
+  if (error) throw error;
+}
+
+export interface PickupRequestWithTrip extends PickupRequest {
+  trip: Trip | null;
+  driver: PublicProfile | null;
+}
+
+// Solicitudes del pasajero, con el viaje y el conductor (para la página
+// "Mis solicitudes" donde también puede calificarlo si el viaje terminó).
+export async function fetchMyRequests(passengerId: string): Promise<PickupRequestWithTrip[]> {
+  const { data: requests, error } = await supabase
+    .from("pickup_requests")
+    .select("id, trip_id, passenger_id, status, created_at")
+    .eq("passenger_id", passengerId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  if (!requests || requests.length === 0) return [];
+
+  const tripIds = [...new Set(requests.map((r) => r.trip_id))];
+  const { data: trips, error: tripsError } = await supabase
+    .from("trips")
+    .select("id, driver_id, avenida, departure_time, seats_total, seats_available, status, created_at")
+    .in("id", tripIds);
+  if (tripsError) throw tripsError;
+
+  const tripById = new Map((trips ?? []).map((t) => [t.id, t]));
+  const driverIds = [...new Set((trips ?? []).map((t) => t.driver_id))];
+  const { data: drivers, error: driversError } = await supabase
+    .from("public_profiles")
+    .select("id, nombre_pila, foto_url, rating_avg, rating_count")
+    .in("id", driverIds);
+  if (driversError) throw driversError;
+  const driverById = new Map((drivers ?? []).map((d) => [d.id, d]));
+
+  return requests.map((r) => {
+    const trip = tripById.get(r.trip_id) ?? null;
+    return { ...r, trip, driver: trip ? driverById.get(trip.driver_id) ?? null : null };
+  });
+}
+
 export interface NearbyTrip {
   trip_id: string;
   avenida: string;

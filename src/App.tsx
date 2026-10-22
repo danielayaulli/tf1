@@ -7,6 +7,7 @@ import { RegisterPage } from "./features/auth/RegisterPage";
 import { MyTripsPage } from "./features/trips/MyTripsPage";
 import { PublishTripPage } from "./features/trips/PublishTripPage";
 import { SearchTripsPage } from "./features/trips/SearchTripsPage";
+import { MyRequestsPage } from "./features/ratings/MyRequestsPage";
 import "./App.css";
 
 function App() {
@@ -45,6 +46,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <SearchTripsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pasajero/mis-solicitudes"
+            element={
+              <ProtectedRoute>
+                <MyRequestsPage />
               </ProtectedRoute>
             }
           />

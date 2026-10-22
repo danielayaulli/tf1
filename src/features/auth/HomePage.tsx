@@ -17,6 +17,12 @@ export function HomePage() {
       <h1>Hola, {profile?.nombres}</h1>
       <p>Estado de verificación: {profile?.verification_status}</p>
       <p>Roles: {roles}</p>
+      <p>
+        Tu calificación:{" "}
+        {profile?.rating_avg != null
+          ? `${profile.rating_avg.toFixed(1)} ★ (${profile.rating_count} ${profile.rating_count === 1 ? "calificación" : "calificaciones"})`
+          : "sin calificaciones todavía"}
+      </p>
 
       {profile?.is_driver && (
         <nav>
@@ -29,6 +35,8 @@ export function HomePage() {
       {profile?.is_passenger && (
         <nav>
           <Link to="/pasajero/buscar">Buscar viajes</Link>
+          {" · "}
+          <Link to="/pasajero/mis-solicitudes">Mis solicitudes</Link>
         </nav>
       )}
 
