@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { APIProvider, Map, AdvancedMarker, Polyline, useMapsLibrary } from "@vis.gl/react-google-maps";
+import { Car } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { isInLima } from "../../lib/geo";
 import type { LatLng } from "../../lib/geo";
@@ -9,6 +10,7 @@ import { createTrip } from "./api";
 import { fetchMyVehicle } from "../vehicles/api";
 import type { Vehicle } from "../../types/vehicle";
 import { isWatchlistClear } from "../../types/profile";
+import { BottomSheet, Button, EmptyState, Input, StatusScreen } from "../../components/ui";
 
 const LIMA_CENTER = { lat: -12.09, lng: -77.02 };
 
@@ -123,102 +125,111 @@ function PublishTripForm() {
 
   if (profile && !isWatchlistClear(profile.watchlist_status)) {
     return (
-      <div className="trip-page">
-        <h1>Publicar viaje</h1>
-        <p>Estamos verificando tu información, te avisaremos. Mientras tanto no puedes publicar viajes.</p>
-      </div>
+      <StatusScreen
+        icon={Car}
+        title="Estamos verificando tu información"
+        description="Te avisaremos apenas termine. Mientras tanto no puedes publicar viajes."
+      />
     );
   }
 
-  if (vehicle === undefined) return <p>Cargando...</p>;
+  if (vehicle === undefined) return <p className="p-6 text-text-secondary">Cargando...</p>;
 
   if (vehicle === null) {
     return (
-      <div className="trip-page">
-        <h1>Publicar viaje</h1>
-        <p>
-          Antes de publicar un viaje debes registrar tu vehículo (placa, modelo, color y asientos).
-        </p>
-        <Link to="/conductor/vehiculo">Registrar mi vehículo</Link>
+      <div className="safe-x mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center bg-bg-page">
+        <EmptyState
+          icon={Car}
+          title="Todavía no registraste tu vehículo"
+          description="Necesitas registrarlo (placa, modelo, color y asientos) antes de publicar un viaje."
+          action={
+            <Button onClick={() => navigate("/conductor/vehiculo")} className="mt-3">
+              Registrar mi vehículo
+            </Button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="trip-page">
-      <h1>Publicar viaje</h1>
-      <p>
-        Haz clic en "Elegir origen" y luego en el mapa; repite con "Elegir destino". Ambos
-        puntos deben estar dentro de Lima Metropolitana.
-      </p>
+    <div className="relative h-dvh overflow-hidden bg-bg-page">
+      <Map
+        mapId="publish-trip-map"
+        defaultCenter={LIMA_CENTER}
+        defaultZoom={12}
+        disableDefaultUI
+        className="h-full w-full"
+        onClick={(e) => e.detail.latLng && handleMapClick(e.detail.latLng)}
+      >
+        {origin && <AdvancedMarker position={origin} title="Origen" />}
+        {destination && <AdvancedMarker position={destination} title="Destino" />}
+        {route && <Polyline path={route} strokeColor="#1D4ED8" strokeWeight={4} />}
+      </Map>
 
-      <div className="map-controls">
-        <button type="button" onClick={() => setPickMode("origin")} disabled={pickMode === "origin"}>
-          Elegir origen {origin && "✓"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setPickMode("destination")}
-          disabled={pickMode === "destination"}
-        >
-          Elegir destino {destination && "✓"}
-        </button>
-        <button
-          type="button"
-          onClick={handleCalculateRoute}
-          disabled={!origin || !destination || calculatingRoute}
-        >
-          {calculatingRoute ? "Calculando..." : "Calcular ruta"}
-        </button>
-      </div>
+      <BottomSheet className="flex flex-col gap-3 px-4 pb-4">
+        <div>
+          <h1 className="text-lg font-extrabold text-text-primary">Publicar viaje</h1>
+          <p className="text-sm text-text-secondary">
+            Elige origen y destino en el mapa. Ambos puntos deben estar dentro de Lima Metropolitana.
+          </p>
+        </div>
 
-      <div className="map-container">
-        <Map
-          mapId="publish-trip-map"
-          defaultCenter={LIMA_CENTER}
-          defaultZoom={12}
-          onClick={(e) => e.detail.latLng && handleMapClick(e.detail.latLng)}
-        >
-          {origin && <AdvancedMarker position={origin} title="Origen" />}
-          {destination && <AdvancedMarker position={destination} title="Destino" />}
-          {route && <Polyline path={route} strokeColor="#1a73e8" strokeWeight={4} />}
-        </Map>
-      </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={pickMode === "origin" ? "primary" : "secondary"}
+            onClick={() => setPickMode("origin")}
+          >
+            Elegir origen {origin && "✓"}
+          </Button>
+          <Button
+            type="button"
+            variant={pickMode === "destination" ? "primary" : "secondary"}
+            onClick={() => setPickMode("destination")}
+          >
+            Elegir destino {destination && "✓"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleCalculateRoute}
+            disabled={!origin || !destination || calculatingRoute}
+            loading={calculatingRoute}
+          >
+            Calcular ruta
+          </Button>
+        </div>
 
-      <form onSubmit={handleSubmit}>
-        <label>
-          Avenida principal
-          <input
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input
+            label="Avenida principal"
             value={avenida}
             onChange={(e) => setAvenida(e.target.value)}
             placeholder="Av. Javier Prado"
           />
-        </label>
-        <label>
-          Hora de salida
-          <input
+          <Input
+            label="Hora de salida"
             type="datetime-local"
             value={departureTime}
             onChange={(e) => setDepartureTime(e.target.value)}
           />
-        </label>
-        <label>
-          Asientos disponibles
-          <input
+          <Input
+            label="Asientos disponibles"
             type="number"
             min={1}
             max={6}
             value={seatsTotal}
             onChange={(e) => setSeatsTotal(Number(e.target.value))}
           />
-        </label>
 
-        {error && <p className="error">{error}</p>}
+          {error && <p className="rounded-sm bg-error-soft px-3 py-2 text-sm font-medium text-error">{error}</p>}
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Publicando..." : "Publicar viaje"}
-        </button>
-      </form>
+          <Button type="submit" loading={submitting}>
+            Publicar viaje
+          </Button>
+        </form>
+      </BottomSheet>
     </div>
   );
 }

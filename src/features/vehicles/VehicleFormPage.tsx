@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { fetchMyVehicle, upsertVehicle } from "./api";
 import { isValidPlaca } from "./validation";
+import { Button, Card, Input } from "../../components/ui";
 
 export function VehicleFormPage() {
   const { profile } = useAuth();
@@ -58,47 +59,48 @@ export function VehicleFormPage() {
     }
   }
 
-  if (loading) return <p>Cargando...</p>;
+  if (loading) return <p className="p-6 text-text-secondary">Cargando...</p>;
 
   return (
-    <div className="trip-page">
-      <h1>Mi vehículo</h1>
-      <p>Debes registrar tu vehículo antes de publicar un viaje. Tus pasajeros verán estos datos para identificar el carro.</p>
+    <div className="safe-x mx-auto min-h-dvh max-w-md bg-bg-page pt-8 pb-14">
+      <h1 className="mb-1 text-xl font-extrabold text-text-primary">Mi vehículo</h1>
+      <p className="mb-5 text-sm text-text-secondary">
+        Debes registrar tu vehículo antes de publicar un viaje. Tus pasajeros verán estos datos para identificar el
+        carro.
+      </p>
 
-      <form onSubmit={handleSubmit}>
-        <label>
-          Placa
-          <input value={placa} onChange={(e) => setPlaca(e.target.value)} placeholder="ABC-123" />
-        </label>
-        <label>
-          Modelo
-          <input value={modelo} onChange={(e) => setModelo(e.target.value)} placeholder="Toyota Yaris" />
-        </label>
-        <label>
-          Color
-          <input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Gris" />
-        </label>
-        <label>
-          Asientos para pasajeros
-          <input
+      <Card>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input label="Placa" value={placa} onChange={(e) => setPlaca(e.target.value)} placeholder="ABC-123" />
+          <Input
+            label="Modelo"
+            value={modelo}
+            onChange={(e) => setModelo(e.target.value)}
+            placeholder="Toyota Yaris"
+          />
+          <Input label="Color" value={color} onChange={(e) => setColor(e.target.value)} placeholder="Gris" />
+          <Input
+            label="Asientos para pasajeros"
             type="number"
             min={1}
             max={6}
             value={asientos}
             onChange={(e) => setAsientos(Number(e.target.value))}
           />
-        </label>
 
-        {error && <p className="error">{error}</p>}
-        {saved && <p>Vehículo guardado.</p>}
+          {error && <p className="rounded-sm bg-error-soft px-3 py-2 text-sm font-medium text-error">{error}</p>}
+          {saved && <p className="rounded-sm bg-success-soft px-3 py-2 text-sm font-medium text-success">Vehículo guardado.</p>}
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Guardando..." : "Guardar vehículo"}
-        </button>
-        <button type="button" onClick={() => navigate("/conductor/publicar")}>
-          Ir a publicar viaje
-        </button>
-      </form>
+          <div className="flex flex-col gap-2">
+            <Button type="submit" loading={submitting}>
+              Guardar vehículo
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => navigate("/conductor/publicar")}>
+              Ir a publicar viaje
+            </Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }

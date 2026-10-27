@@ -31,6 +31,11 @@ punta, no que esté pulido.
   entrega (`uvicorn`, no se despliega); el frontend lo llama solo si está
   disponible y degrada en silencio si no. Ver
   [recommendation-service/README.md](recommendation-service/README.md).
+- **Tailwind CSS v4** (`@tailwindcss/vite`, sin `postcss.config`/`tailwind.config.js`
+  — v4 configura todo vía `@theme` en CSS) + **`lucide-react`** para íconos,
+  desde la Fase 8 (identidad visual). Nada de shadcn/ui: las piezas
+  interactivas de Rutero son simples y no justifican la dependencia de
+  Radix UI — ver "Guía de estilo" abajo para el detalle completo.
 - **tsx** para correr `scripts/import-watchlist.ts` (TypeScript directo,
   sin paso de compilación) — el único script "de un solo uso" del repo que
   no es parte de la app ni de las migraciones.
@@ -59,6 +64,13 @@ punta, no que esté pulido.
 - [x] **Fase 7** — Tamizado contra lista de requisitoriados (watchlist):
       importación idempotente, comparación por tokens + Levenshtein, nunca
       bloquea sin revisión humana, panel de administración
+- [x] **Fase 8** — Identidad visual y diseño (marca "Rutero"): tokens, logo,
+      componentes base, `/design-system`, y las 5 partes del rediseño
+      (login/registro/perfil, pasajero y mapa, conductor, admin) — ver "Guía
+      de estilo" abajo. El panel analítico (mapa de calor/métricas) del
+      admin quedó fuera a propósito (necesitaría lógica/consultas nuevas,
+      no solo diseño). Propuesta aprobada:
+      [claude.ai/artifact/LcrpwyiSx9sTpV9fKYDoEF](https://claude.ai/artifact/LcrpwyiSx9sTpV9fKYDoEF)
 
 Detalle de qué se construyó y qué probar a mano en cada fase: ver las
 secciones "Fase N — qué se construyó" en [README.md](README.md).
@@ -400,3 +412,108 @@ paso.
    no en modo privado (para que `localStorage`/la sesión persistan), y
    confirma que pide el permiso de ubicación al llegar a un viaje
    `ongoing` (ver Gotchas sobre Wake Lock y HTTPS).
+
+## Guía de estilo (Rutero)
+
+Identidad visual de la Fase 8. Propuesta completa, con capturas y la
+justificación de cada decisión:
+[claude.ai/artifact/LcrpwyiSx9sTpV9fKYDoEF](https://claude.ai/artifact/LcrpwyiSx9sTpV9fKYDoEF).
+Esto es el resumen operativo para seguir construyendo con la misma
+coherencia — **ningún componente nuevo define un color, radio, sombra o
+degradado que no venga de `src/styles/tokens.css`.**
+
+### Dónde viven los tokens
+
+Todo en **`src/styles/tokens.css`** (Tailwind v4, `@theme` — no hay
+`tailwind.config.js`, v4 configura todo en CSS). Se importa una sola vez,
+en `src/main.tsx`, antes de `index.css`.
+
+- **Color**: `navy-50..900` (+ `navy-950`, solo para el extremo oscuro de
+  los degradados, fuera de la escala estándar), `accent-50/100/500/600/700`,
+  `amber-100/400/500` (**solo** para calificaciones, nunca como "warning"),
+  `success/warning/error/info` + su variante `-soft` (fondo claro),
+  `bg-page/bg-surface/bg-sunken`, `border-subtle/border-default`,
+  `text-primary/secondary/disabled/on-dark/on-dark-muted`. Se usan como
+  utilidades normales de Tailwind: `bg-navy-900`, `text-accent-700`,
+  `border-error`, etc.
+- **Contraste verificado (no supuesto)**: blanco sobre `navy-900` → 14.8:1;
+  blanco sobre `accent-700` (#1D4ED8) → 6.7:1 (AA, úsalo para texto de
+  botones/headers); blanco sobre `accent-500` (#3B82F6) → **solo 3.7:1** —
+  nunca párrafos, solo texto grande/negrita, íconos o fondos decorativos.
+  `text-secondary` sobre `bg-page` → 5.0:1 (al límite; para texto
+  importante usa `text-primary`).
+- **Tipografía**: una sola familia, **Plus Jakarta Sans** (Google Fonts,
+  cargada en `index.html`), variando el peso — nada de combinar dos
+  familias. Escala: display 28/34/800, h1 24/30/700, h2 20/26/700, h3
+  17/23/600, body 16/24/400, body-sm 14/21/400, label 13/16/700
+  (uppercase, tracking). **Ningún `input`/`textarea`/`select` baja de
+  16px** (ya forzado globalmente en `tokens.css`) — si no, Safari hace zoom
+  al enfocar y rompe el layout.
+- **Espaciado**: la escala 4/8/12/16/24/32px de la propuesta **es** la
+  escala por defecto de Tailwind (`gap-1`=4px … `gap-8`=32px) — no se
+  redefine, solo se usa.
+- **Radios**: `rounded-sm`=8px, `rounded-md`=12px, `rounded-lg`=16px,
+  `rounded-xl`=24px (redefinidos en `@theme`), `rounded-full` sin cambios.
+- **Sombra**: `shadow-xs/sm/md`, siempre con tinte marino (nunca gris
+  puro) — vienen de `@theme`, no se escriben `box-shadow` sueltos.
+- **Degradados y textura**: `--gradient-hero` (+ manchas, `--gradient-hero-bloom`),
+  `--gradient-soft`, `--gradient-button`/`--gradient-button-hover`,
+  `--texture-dots` — son variables CSS planas (no caben bien en la escala
+  de color de Tailwind: son multi-stop, con ángulo). Se consumen con las
+  clases `.bg-gradient-hero` (alta intensidad: login/registro/
+  verificación/revisión/admin — incluye la textura de puntos),
+  `.bg-gradient-soft` (baja intensidad: cabecera del home, tarjeta de
+  "viaje en curso"), `.bg-gradient-button` (botón primario, con su propio
+  estado `:hover`/`:active`). **Nunca detrás de texto largo, formularios
+  densos ni tablas** — el texto solo se apoya en el tercio más oscuro
+  (`navy-950` → `accent-700`); el tramo claro y las manchas son
+  decorativos. Todo es `linear-gradient`/`radial-gradient` CSS estático —
+  nada de `filter: blur()` grande ni degradados animados (rinde mal en
+  iPhone).
+- **Iconos**: `lucide-react` únicamente. Nunca emojis como ícono de estado
+  o de navegación.
+
+### Componentes (`src/components/ui/`, barrel en `index.ts`)
+
+`Button` (primary/secondary/danger, + `disabled`/`loading`), `Input`/
+`Textarea` (con `label`/`error`), `Card`, `Chip` (tone: info/success/
+warning/error/neutral — siempre con texto, nunca solo color), `Modal`,
+`Toast` + `useToast()` (el `ToastProvider` envuelve toda la app en
+`App.tsx`), `BottomNav` (usa `NavLink`, se fija solo con `fixed` —
+contiene su propio `safe-bottom`), `BottomSheet` (versión estática, sin
+gesto de arrastre todavía), `RatingStars` (lectura con `value`, o
+interactiva pasando `onChange`), `Avatar` (iniciales — la app no tiene
+fotos de perfil), `Skeleton` (respeta `prefers-reduced-motion`),
+`EmptyState`, `GradientHero` (la superficie de degradado reutilizable) y
+`StatusScreen` (pantalla completa de "verificando"/"en revisión", mensaje
+siempre neutro — para usar en la Parte 2 reemplazando los mensajes
+sueltos de `ProtectedRoute`/`HomePage`/etc.).
+
+Logo: `src/components/Logo.tsx` (`Logo` = lockup completo, `LogoMark` =
+solo el isotipo, con `tone="gradient"|"light"|"dark"`). El isotipo real
+(SVG) también vive suelto en `public/favicon.svg`; `apple-touch-icon.png`/
+`icon-192.png`/`icon-512.png` se generaron con `rsvg-convert` a partir de
+ese mismo SVG — si el logo cambia, regenerarlos desde ahí, no a mano.
+
+### `/design-system`
+
+Página de referencia con todos los componentes y sus estados —
+`npm run dev` → `http://localhost:5173/design-system`. Gateada por
+`import.meta.env.DEV` directamente en la definición de la `<Route>` en
+`App.tsx`: en `npm run build` (producción) esa ruta no se registra. El
+código de la página SÍ queda en el bundle de producción (import estático,
+no lazy) — es un tradeoff consciente, no vale la pena la complejidad de un
+`import()` dinámico para una página de desarrollo de este tamaño.
+
+### Reglas duras (no negociables en ninguna pantalla nueva)
+
+- Nada de información transmitida **solo** por color (composición de
+  sexo, estados de alerta, errores) — siempre ícono + texto también.
+- Áreas táctiles ≥44×44px (`min-h-11` = 44px ya está en `Button`/`Input`).
+- `env(safe-area-inset-*)` en cualquier elemento fijo a un borde de
+  pantalla (clases `.safe-top`/`.safe-bottom`/`.safe-x` en `tokens.css`) —
+  nunca `vh` para layouts de una pantalla completa, usar `dvh`
+  (`min-h-dvh`, ya usado en `StatusScreen`).
+- Solo modo claro — no se implementa `prefers-color-scheme: dark` en
+  ningún componente de Rutero (a propósito, a diferencia de, por ejemplo,
+  un Artifact, que sí debe soportar ambos temas).

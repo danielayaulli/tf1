@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { submitRating } from "./api";
+import { Button, RatingStars, Textarea } from "../../components/ui";
 
 interface RatingFormProps {
   tripId: string;
@@ -30,26 +31,22 @@ export function RatingForm({ tripId, raterId, ratedId, ratedName, onSubmitted }:
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <p>Califica a {ratedName}:</p>
-      {error && <p className="error">{error}</p>}
-      <label>
-        Estrellas
-        <select value={stars} onChange={(e) => setStars(Number(e.target.value))}>
-          {[5, 4, 3, 2, 1].map((n) => (
-            <option key={n} value={n}>
-              {"★".repeat(n)} ({n})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Comentario (opcional)
-        <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} />
-      </label>
-      <button type="submit" disabled={submitting}>
-        {submitting ? "Enviando..." : "Enviar calificación"}
-      </button>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg bg-bg-sunken p-3.5">
+      <p className="text-sm font-bold text-text-primary">Califica a {ratedName}</p>
+      {error && <p className="rounded-sm bg-error-soft px-2.5 py-2 text-xs font-medium text-error">{error}</p>}
+
+      <RatingStars value={stars} onChange={setStars} size={28} aria-label={`Calificación: ${stars} de 5 estrellas`} />
+
+      <Textarea
+        label="Comentario (opcional)"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        rows={2}
+      />
+
+      <Button type="submit" loading={submitting}>
+        Enviar calificación
+      </Button>
     </form>
   );
 }

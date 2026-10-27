@@ -3,6 +3,8 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { registerUser } from "./api";
 import { isValidDni } from "./validation";
+import { Logo } from "../../components/Logo";
+import { Button, GradientHero, Input } from "../../components/ui";
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -56,105 +58,104 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="auth-page">
-      <h1>Crear cuenta</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Correo
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label>
-          Contraseña
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        <label>
-          DNI
-          <input
-            type="text"
-            required
-            inputMode="numeric"
-            maxLength={8}
-            value={dni}
-            onChange={(e) => setDni(e.target.value)}
-          />
-        </label>
-        <label>
-          Nombres
-          <input required value={nombres} onChange={(e) => setNombres(e.target.value)} />
-        </label>
-        <label>
-          Apellidos
-          <input required value={apellidos} onChange={(e) => setApellidos(e.target.value)} />
-        </label>
-        <fieldset>
-          <legend>Sexo</legend>
-          <label>
-            <input type="radio" name="sexo" checked={sexo === "M"} onChange={() => setSexo("M")} />
-            Masculino
-          </label>
-          <label>
-            <input type="radio" name="sexo" checked={sexo === "F"} onChange={() => setSexo("F")} />
-            Femenino
-          </label>
-        </fieldset>
-        <fieldset>
-          <legend>Rol (puedes elegir ambos)</legend>
-          <label>
-            <input
-              type="checkbox"
-              checked={isPassenger}
-              onChange={(e) => setIsPassenger(e.target.checked)}
-            />
-            Pasajero
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={isDriver}
-              onChange={(e) => setIsDriver(e.target.checked)}
-            />
-            Conductor
-          </label>
+    <div className="min-h-dvh bg-bg-page pb-14">
+      <GradientHero className="flex flex-col items-center gap-2 py-8">
+        <Logo size={36} wordmarkColor="#FFFFFF" />
+        <p className="text-sm font-semibold text-white/85">Crea tu cuenta</p>
+      </GradientHero>
+
+      <form onSubmit={handleSubmit} className="safe-x mx-auto flex max-w-md flex-col gap-4 pt-6">
+        <Input label="Correo" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input
+          label="Contraseña"
+          type="password"
+          required
+          minLength={6}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <Input
+          label="DNI"
+          type="text"
+          required
+          inputMode="numeric"
+          maxLength={8}
+          value={dni}
+          onChange={(e) => setDni(e.target.value)}
+        />
+        <Input label="Nombres" required value={nombres} onChange={(e) => setNombres(e.target.value)} />
+        <Input label="Apellidos" required value={apellidos} onChange={(e) => setApellidos(e.target.value)} />
+
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-sm font-bold text-text-primary">Sexo</legend>
+          <div className="flex gap-5">
+            <label className="flex items-center gap-2 text-base text-text-primary">
+              <input type="radio" name="sexo" checked={sexo === "M"} onChange={() => setSexo("M")} className="size-5 accent-accent-700" />
+              Masculino
+            </label>
+            <label className="flex items-center gap-2 text-base text-text-primary">
+              <input type="radio" name="sexo" checked={sexo === "F"} onChange={() => setSexo("F")} className="size-5 accent-accent-700" />
+              Femenino
+            </label>
+          </div>
         </fieldset>
 
-        <fieldset>
-          <legend>Privacidad</legend>
-          <p>
-            Usamos tu DNI y nombres solo para verificar tu identidad (incluida una comparación contra
-            registros públicos) y coordinar tus viajes. Nunca se muestran a otros usuarios. Puedes pedir que
-            se eliminen escribiéndonos.
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-sm font-bold text-text-primary">Rol (puedes elegir ambos)</legend>
+          <div className="flex gap-5">
+            <label className="flex items-center gap-2 text-base text-text-primary">
+              <input
+                type="checkbox"
+                checked={isPassenger}
+                onChange={(e) => setIsPassenger(e.target.checked)}
+                className="size-5 accent-accent-700"
+              />
+              Pasajero
+            </label>
+            <label className="flex items-center gap-2 text-base text-text-primary">
+              <input
+                type="checkbox"
+                checked={isDriver}
+                onChange={(e) => setIsDriver(e.target.checked)}
+                className="size-5 accent-accent-700"
+              />
+              Conductor
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset className="flex flex-col gap-2.5 rounded-lg bg-info-soft p-4">
+          <legend className="text-sm font-bold text-text-primary">Privacidad</legend>
+          <p className="text-sm text-text-secondary">
+            Usamos tu DNI y nombres solo para verificar tu identidad (incluida una comparación contra registros
+            públicos) y coordinar tus viajes. Nunca se muestran a otros usuarios. Puedes pedir que se eliminen
+            escribiéndonos.
           </p>
-          <label>
+          <label className="flex items-start gap-2.5 text-sm font-medium text-text-primary">
             <input
               type="checkbox"
               checked={acceptsPrivacy}
               onChange={(e) => setAcceptsPrivacy(e.target.checked)}
+              className="mt-0.5 size-5 shrink-0 accent-accent-700"
             />
-            Acepto el tratamiento de mis datos personales conforme a la Ley N° 29733 (Ley de Protección de
-            Datos Personales).
+            Acepto el tratamiento de mis datos personales conforme a la Ley N° 29733 (Ley de Protección de Datos
+            Personales).
           </label>
         </fieldset>
 
-        {error && <p className="error">{error}</p>}
+        {error && <p className="rounded-sm bg-error-soft px-3 py-2 text-sm font-medium text-error">{error}</p>}
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Creando cuenta..." : "Registrarme"}
-        </button>
+        <Button type="submit" loading={submitting} className="mt-1 w-full">
+          Registrarme
+        </Button>
+
+        <p className="pb-4 text-center text-sm text-text-secondary">
+          ¿Ya tienes cuenta?{" "}
+          <Link to="/login" className="font-bold text-accent-700">
+            Inicia sesión
+          </Link>
+        </p>
       </form>
-      <p>
-        ¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link>
-      </p>
     </div>
   );
 }

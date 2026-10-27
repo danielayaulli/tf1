@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { APIProvider } from "@vis.gl/react-google-maps";
+import { ClipboardList, Clock } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { fetchMyRequests, fetchTripRoutePoints } from "../trips/api";
 import type { PickupRequestWithTrip } from "../trips/api";
@@ -7,6 +8,20 @@ import type { LatLng } from "../../lib/geo";
 import { fetchRatingsGiven } from "./api";
 import { RatingForm } from "./RatingForm";
 import { LiveTripMap } from "../location/LiveTripMap";
+import { Card, Chip, EmptyState } from "../../components/ui";
+
+const REQUEST_STATUS_LABEL: Record<string, string> = {
+  pending: "Pendiente",
+  accepted: "Aceptada",
+  rejected: "Rechazada",
+  cancelled: "Cancelada",
+};
+const REQUEST_STATUS_TONE: Record<string, "info" | "success" | "error" | "neutral"> = {
+  pending: "info",
+  accepted: "success",
+  rejected: "error",
+  cancelled: "neutral",
+};
 
 function PassengerLiveMap({
   tripId,
@@ -25,7 +40,7 @@ function PassengerLiveMap({
     fetchTripRoutePoints(tripId).then(setRoute);
   }, [tripId]);
 
-  if (!route || route.length === 0) return <p>Cargando mapa...</p>;
+  if (!route || route.length === 0) return <p className="text-sm text-text-secondary">Cargando mapa...</p>;
 
   return (
     <LiveTripMap
@@ -71,51 +86,67 @@ export function MyRequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
-  if (loading) return <p>Cargando tus solicitudes...</p>;
+  if (loading) return <p className="p-6 text-text-secondary">Cargando tus solicitudes...</p>;
 
   return (
-    <div className="trip-page">
-      <h1>Mis solicitudes</h1>
-      {error && <p className="error">{error}</p>}
-      {requests.length === 0 && <p>Todavía no has solicitado ningún recojo.</p>}
+    <div className="safe-x mx-auto min-h-dvh max-w-md bg-bg-page pb-14 pt-6">
+      <h1 className="mb-4 text-xl font-extrabold text-text-primary">Mis solicitudes</h1>
+      {error && <p className="mb-4 rounded-sm bg-error-soft px-3 py-2 text-sm font-medium text-error">{error}</p>}
 
-      {requests.map((req) => (
-        <section key={req.id} className="trip-card">
-          <h2>{req.trip?.avenida ?? "Viaje"}</h2>
-          {req.trip && <p>Salida: {new Date(req.trip.departure_time).toLocaleString("es-PE")}</p>}
-          <p>
-            Conductor: {req.driver?.nombre_pila ?? "—"} · Estado de tu solicitud: {req.status} · Estado del
-            viaje: {req.trip?.status ?? "—"}
-          </p>
+      {requests.length === 0 && (
+        <EmptyState icon={ClipboardList} title="Todavía no has solicitado ningún recojo" />
+      )}
 
-          {req.status === "accepted" && req.trip?.status === "ongoing" && profile && req.driver && (
-            <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
-              <PassengerLiveMap
-                tripId={req.trip_id}
-                passengerId={profile.id}
-                driverId={req.driver.id}
-                driverName={req.driver.nombre_pila}
-              />
-            </APIProvider>
-          )}
+      <div className="flex flex-col gap-4">
+        {requests.map((req) => (
+          <Card key={req.id} className="flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="font-bold text-text-primary">{req.trip?.avenida ?? "Viaje"}</h2>
+                {req.trip && (
+                  <p className="flex items-center gap-1.5 text-xs text-text-secondary">
+                    <Clock className="size-3.5" aria-hidden="true" />
+                    {new Date(req.trip.departure_time).toLocaleString("es-PE")}
+                  </p>
+                )}
+              </div>
+              <Chip tone={REQUEST_STATUS_TONE[req.status] ?? "neutral"}>
+                {REQUEST_STATUS_LABEL[req.status] ?? req.status}
+              </Chip>
+            </div>
+            <p className="text-sm text-text-secondary">
+              Conductor: {req.driver?.nombre_pila ?? "—"} · Viaje: {req.trip?.status ?? "—"}
+            </p>
 
-          {req.status === "accepted" &&
-            req.trip?.status === "finished" &&
-            profile &&
-            req.driver &&
-            (ratedTripIds.has(req.trip_id) ? (
-              <p>Ya calificaste a {req.driver.nombre_pila}.</p>
-            ) : (
-              <RatingForm
-                tripId={req.trip_id}
-                raterId={profile.id}
-                ratedId={req.driver.id}
-                ratedName={req.driver.nombre_pila}
-                onSubmitted={loadData}
-              />
-            ))}
-        </section>
-      ))}
+            {req.status === "accepted" && req.trip?.status === "ongoing" && profile && req.driver && (
+              <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+                <PassengerLiveMap
+                  tripId={req.trip_id}
+                  passengerId={profile.id}
+                  driverId={req.driver.id}
+                  driverName={req.driver.nombre_pila}
+                />
+              </APIProvider>
+            )}
+
+            {req.status === "accepted" &&
+              req.trip?.status === "finished" &&
+              profile &&
+              req.driver &&
+              (ratedTripIds.has(req.trip_id) ? (
+                <p className="text-sm text-text-secondary">Ya calificaste a {req.driver.nombre_pila}.</p>
+              ) : (
+                <RatingForm
+                  tripId={req.trip_id}
+                  raterId={profile.id}
+                  ratedId={req.driver.id}
+                  ratedName={req.driver.nombre_pila}
+                  onSubmitted={loadData}
+                />
+              ))}
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { triggerWatchlistScreening, updateOwnNames } from "./api";
+import { Button, Card, Input } from "../../components/ui";
 
 export function EditProfilePage() {
   const { profile, refreshProfile } = useAuth();
@@ -41,27 +42,25 @@ export function EditProfilePage() {
   }
 
   return (
-    <div className="auth-page">
-      <h1>Editar mi perfil</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Nombres
-          <input required value={nombres} onChange={(e) => setNombres(e.target.value)} />
-        </label>
-        <label>
-          Apellidos
-          <input required value={apellidos} onChange={(e) => setApellidos(e.target.value)} />
-        </label>
+    <div className="safe-x mx-auto min-h-dvh max-w-md bg-bg-page pt-8">
+      <h1 className="mb-5 text-xl font-extrabold text-text-primary">Editar mi perfil</h1>
+      <Card>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input label="Nombres" required value={nombres} onChange={(e) => setNombres(e.target.value)} />
+          <Input label="Apellidos" required value={apellidos} onChange={(e) => setApellidos(e.target.value)} />
 
-        {error && <p className="error">{error}</p>}
+          {error && <p className="rounded-sm bg-error-soft px-3 py-2 text-sm font-medium text-error">{error}</p>}
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Guardando..." : "Guardar cambios"}
-        </button>
-        <button type="button" onClick={() => navigate("/")}>
-          Cancelar
-        </button>
-      </form>
+          <div className="flex gap-2">
+            <Button type="submit" loading={submitting} className="flex-1">
+              Guardar cambios
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => navigate("/")}>
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }

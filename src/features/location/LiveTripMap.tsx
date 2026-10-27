@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Map, AdvancedMarker, Polyline } from "@vis.gl/react-google-maps";
+import { Radio, ShieldAlert, WifiOff } from "lucide-react";
 import type { LatLng } from "../../lib/geo";
 import type { LiveLocationRole } from "../../types/location";
 import { TEST_MODE } from "../../lib/testMode";
 import { useLiveLocationSharing } from "./useLiveLocationSharing";
 import { useLiveLocationViewers, isStale, secondsSince } from "./useLiveLocationViewers";
 import { useOnlineStatus } from "./useOnlineStatus";
+import { Chip } from "../../components/ui";
 
 interface LiveTripMapProps {
   tripId: string;
@@ -20,8 +22,8 @@ interface LiveTripMapProps {
 }
 
 const MARKER_COLOR: Record<LiveLocationRole, string> = {
-  driver: "#1a73e8",
-  passenger: "#188038",
+  driver: "#0B2559",
+  passenger: "#16A34A",
 };
 
 export function LiveTripMap({
@@ -39,34 +41,50 @@ export function LiveTripMap({
   const online = useOnlineStatus();
 
   return (
-    <div>
-      {!online && <p className="error">Sin conexión a internet. Tu posición no se está enviando.</p>}
+    <div className="flex flex-col gap-2">
+      {!online && (
+        <p className="flex items-center gap-1.5 rounded-sm bg-error-soft px-2.5 py-2 text-xs font-medium text-error">
+          <WifiOff className="size-3.5 shrink-0" aria-hidden="true" />
+          Sin conexión a internet. Tu posición no se está enviando.
+        </p>
+      )}
       {sharingActive && sharing.permissionDenied && (
-        <p className="error">
-          No se puede compartir tu ubicación porque el permiso está denegado. En iPhone: Ajustes →
-          Safari → Ubicación → Permitir (o Ajustes → Privacidad → Localización → Safari).
+        <p className="flex items-center gap-1.5 rounded-sm bg-error-soft px-2.5 py-2 text-xs font-medium text-error">
+          <ShieldAlert className="size-3.5 shrink-0" aria-hidden="true" />
+          No se puede compartir tu ubicación porque el permiso está denegado. En iPhone: Ajustes → Safari →
+          Ubicación → Permitir (o Ajustes → Privacidad → Localización → Safari).
         </p>
       )}
       {sharingActive && sharing.noSignal && !sharing.permissionDenied && (
-        <p className="error">Sin señal de GPS por ahora. Reintentando...</p>
+        <p className="rounded-sm bg-warning-soft px-2.5 py-2 text-xs font-medium text-warning">
+          Sin señal de GPS por ahora. Reintentando...
+        </p>
       )}
       {sharingActive && !TEST_MODE && (
-        <p>Tu ubicación se compartirá solo durante este viaje.{sharing.sharing ? " Compartiendo ahora." : ""}</p>
+        <div className="flex items-center gap-2">
+          <Chip tone={sharing.sharing ? "success" : "neutral"} icon={<Radio className="size-3.5" aria-hidden="true" />}>
+            {sharing.sharing ? "Compartiendo tu ubicación" : "Tu ubicación se compartirá solo durante este viaje"}
+          </Chip>
+        </div>
       )}
       {sharingActive && TEST_MODE && (
-        <p>Modo prueba: haz clic en el mapa para fijar tu ubicación simulada (en vez del GPS real).</p>
+        <p className="text-xs text-text-secondary">
+          Modo prueba: haz clic en el mapa para fijar tu ubicación simulada (en vez del GPS real).
+        </p>
       )}
 
-      <div className="map-container">
+      <div className="h-64 w-full overflow-hidden rounded-lg border border-border-subtle">
         <Map
           mapId={`live-trip-map-${tripId}`}
           defaultCenter={center}
           defaultZoom={13}
+          disableDefaultUI
+          className="h-full w-full"
           onClick={(e) => {
             if (TEST_MODE && e.detail.latLng) setManualPosition(e.detail.latLng);
           }}
         >
-          {route.length > 1 && <Polyline path={route} strokeColor="#1a73e8" strokeWeight={4} />}
+          {route.length > 1 && <Polyline path={route} strokeColor="#1D4ED8" strokeWeight={4} />}
 
           {points.map((p) => {
             const stale = isStale(p.recorded_at, now);
@@ -75,16 +93,8 @@ export function LiveTripMap({
             return (
               <AdvancedMarker key={p.user_id} position={{ lat: p.lat, lng: p.lng }} title={label}>
                 <div
-                  style={{
-                    background: MARKER_COLOR[p.role],
-                    color: "white",
-                    borderRadius: "999px",
-                    padding: "0.2rem 0.5rem",
-                    fontSize: "0.75rem",
-                    whiteSpace: "nowrap",
-                    opacity: stale ? 0.5 : 1,
-                    border: "2px solid white",
-                  }}
+                  className="whitespace-nowrap rounded-full border-2 border-white px-2 py-0.5 text-xs font-bold text-white shadow-sm"
+                  style={{ background: MARKER_COLOR[p.role], opacity: stale ? 0.55 : 1 }}
                 >
                   {label}
                   {stale && ` · hace ${secondsSince(p.recorded_at, now)}s`}
