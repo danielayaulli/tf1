@@ -8,6 +8,10 @@ interface ImportMetaEnv {
   // usa una tolerancia de cercanía mayor. Ver src/lib/testMode.ts.
   readonly VITE_TEST_MODE?: string;
   readonly VITE_TEST_TOLERANCE_M?: string;
+  // URL del servicio de recomendación (AHP + lógica difusa, ver
+  // recommendation-service/). Vacío en producción: el servicio corre solo
+  // local para esta entrega. Ver src/features/recommendation/api.ts.
+  readonly VITE_RECOMMENDATION_API_URL?: string;
 }
 
 interface ImportMeta {

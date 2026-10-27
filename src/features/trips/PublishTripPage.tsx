@@ -8,6 +8,7 @@ import type { LatLng } from "../../lib/geo";
 import { createTrip } from "./api";
 import { fetchMyVehicle } from "../vehicles/api";
 import type { Vehicle } from "../../types/vehicle";
+import { isWatchlistClear } from "../../types/profile";
 
 const LIMA_CENTER = { lat: -12.09, lng: -77.02 };
 
@@ -118,6 +119,15 @@ function PublishTripForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (profile && !isWatchlistClear(profile.watchlist_status)) {
+    return (
+      <div className="trip-page">
+        <h1>Publicar viaje</h1>
+        <p>Estamos verificando tu información, te avisaremos. Mientras tanto no puedes publicar viajes.</p>
+      </div>
+    );
   }
 
   if (vehicle === undefined) return <p>Cargando...</p>;

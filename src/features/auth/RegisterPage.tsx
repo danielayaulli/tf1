@@ -14,6 +14,7 @@ export function RegisterPage() {
   const [sexo, setSexo] = useState<"M" | "F">("M");
   const [isPassenger, setIsPassenger] = useState(true);
   const [isDriver, setIsDriver] = useState(false);
+  const [acceptsPrivacy, setAcceptsPrivacy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -27,6 +28,10 @@ export function RegisterPage() {
     }
     if (!isPassenger && !isDriver) {
       setError("Elige al menos un rol: pasajero o conductor.");
+      return;
+    }
+    if (!acceptsPrivacy) {
+      setError("Debes aceptar el tratamiento de tus datos personales para registrarte.");
       return;
     }
 
@@ -120,6 +125,24 @@ export function RegisterPage() {
               onChange={(e) => setIsDriver(e.target.checked)}
             />
             Conductor
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Privacidad</legend>
+          <p>
+            Usamos tu DNI y nombres solo para verificar tu identidad (incluida una comparación contra
+            registros públicos) y coordinar tus viajes. Nunca se muestran a otros usuarios. Puedes pedir que
+            se eliminen escribiéndonos.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={acceptsPrivacy}
+              onChange={(e) => setAcceptsPrivacy(e.target.checked)}
+            />
+            Acepto el tratamiento de mis datos personales conforme a la Ley N° 29733 (Ley de Protección de
+            Datos Personales).
           </label>
         </fieldset>
 

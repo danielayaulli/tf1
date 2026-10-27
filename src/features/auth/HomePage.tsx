@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { logoutUser } from "./api";
+import { isWatchlistClear } from "../../types/profile";
 
 export function HomePage() {
   const { profile } = useAuth();
@@ -23,6 +24,20 @@ export function HomePage() {
           ? `${profile.rating_avg.toFixed(1)} ★ (${profile.rating_count} ${profile.rating_count === 1 ? "calificación" : "calificaciones"})`
           : "sin calificaciones todavía"}
       </p>
+
+      {profile && !isWatchlistClear(profile.watchlist_status) && (
+        <p>Estamos verificando tu información, te avisaremos. Mientras tanto no puedes publicar ni solicitar viajes.</p>
+      )}
+
+      {profile?.is_admin && (
+        <nav>
+          <Link to="/admin/alertas">Panel de administración</Link>
+        </nav>
+      )}
+
+      <nav>
+        <Link to="/perfil/editar">Editar mi perfil</Link>
+      </nav>
 
       {profile?.is_driver && (
         <nav>

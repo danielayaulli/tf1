@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Datos reales del watchlist (nombres de personas reales, nunca al repo).
+# Se ignora CUALQUIER .csv en data/ salvo watchlist_example.csv (nombres
+# ficticios, el único que sí se trackea) -- a propósito más amplio que un
+# solo nombre de archivo: evita que una copia del CSV real con otro nombre
+# (ej. data/Buscados.csv, el nombre original al descargarlo) se cuele en un
+# commit.
+data/*.csv
+!data/watchlist_example.csv
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -25,6 +25,15 @@ punta, no que esté pulido.
   `live_locations` y se suscribe a los cambios de la fila de la otra parte.
 - **Vercel** para el despliegue (SPA estática + HTTPS gratis). Ver sección
   "Despliegue" más abajo para los pasos exactos.
+- **Python (FastAPI + numpy + scikit-fuzzy)** en `recommendation-service/`,
+  un servicio **aparte** del resto del stack: calcula el ranking de viajes
+  (AHP + lógica difusa) que exige el curso. Corre solo local para esta
+  entrega (`uvicorn`, no se despliega); el frontend lo llama solo si está
+  disponible y degrada en silencio si no. Ver
+  [recommendation-service/README.md](recommendation-service/README.md).
+- **tsx** para correr `scripts/import-watchlist.ts` (TypeScript directo,
+  sin paso de compilación) — el único script "de un solo uso" del repo que
+  no es parte de la app ni de las migraciones.
 - Node se instaló vía **nvm** (no Homebrew: el Homebrew de esta máquina es de
   2019 y está roto). Cada comando de shell necesita
   `export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`
@@ -44,6 +53,12 @@ punta, no que esté pulido.
 - [x] **Fase 5** — Prueba piloto: vehículo del conductor (gate antes de
       publicar), ubicación en tiempo real por Supabase Realtime (RLS
       controla quién ve a quién), modo prueba, despliegue en Vercel
+- [x] **Fase 6** — Módulo de recomendación: AHP + lógica difusa (servicio
+      Python/FastAPI separado, corre local; ver
+      [recommendation-service/README.md](recommendation-service/README.md))
+- [x] **Fase 7** — Tamizado contra lista de requisitoriados (watchlist):
+      importación idempotente, comparación por tokens + Levenshtein, nunca
+      bloquea sin revisión humana, panel de administración
 
 Detalle de qué se construyó y qué probar a mano en cada fase: ver las
 secciones "Fase N — qué se construyó" en [README.md](README.md).
@@ -134,6 +149,69 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
   el DNI. Recuerda desactivarlo (`supabase secrets unset
   TEST_MODE_AUTO_VERIFY`) al terminar la prueba piloto.
 
+- **El ranking AHP+difuso se descartó comparar contra un modelo de ML
+  ("módulo 3")**: se decidió con la usuaria que esa comparación no se
+  hace para esta entrega. La evaluación en el notebook compara solo (a) el
+  orden actual por `distance_m` vs. (b) AHP + difuso.
+- **El servicio de recomendación corre solo local, nunca en Vercel, a
+  propósito.** El frontend (`src/features/recommendation/api.ts`) llama a
+  `VITE_RECOMMENDATION_API_URL` con un timeout corto (2.5s) y si falla por
+  cualquier razón (no configurada, caído, timeout, CORS) devuelve `null` en
+  vez de lanzar — `SearchTripsPage` se queda con el orden actual (por
+  distancia) sin mostrar ningún error. Así la demo ya desplegada en Vercel
+  para la prueba piloto (Fase 5) nunca se rompe por este módulo nuevo.
+- **Las 5 matrices de comparación por pares del grupo son de ejemplo**
+  (`recommendation-service/config/ahp_matrices/group_member_*.json`),
+  pensadas para dar un consenso razonable y consistente (CR bajo) mientras
+  no se reemplazan por las reales de cada integrante — ver el README del
+  servicio para el formato exacto.
+- **`live_locations` usa lat/lng, pero el ranking en Python no usa
+  PostGIS en absoluto**: recibe `distance_m` ya calculado por `nearby_trips`
+  (RPC de Supabase) como un número más en el JSON del request — el servicio
+  Python no se conecta a la base de datos, es puro cómputo sobre lo que le
+  manda el frontend.
+
+- **`watchlist_status` es un eje de verificación independiente de
+  `verification_status`**, nunca se mezclan. Un usuario puede estar
+  `verified` (Fase 1) y a la vez `pending_review` por el watchlist (Fase
+  7), o viceversa. `watchlist_status` solo bloquea publicar/solicitar
+  viajes (no toda la app, a diferencia de `verification_status` en
+  `ProtectedRoute`) porque así lo pide el enunciado literalmente.
+- **La lógica de normalizar/tokenizar/comparar nombres vive en UN solo
+  archivo** (`supabase/functions/_shared/watchlistMatching.ts`), sin
+  imports de Node ni de Deno, para que lo use tal cual tanto
+  `scripts/import-watchlist.ts` (Node, vía `tsx`) como el Edge Function
+  `screen-watchlist` (Deno) — una sola fuente de verdad para "cómo se
+  normaliza y compara un nombre", nunca dos implementaciones que se puedan
+  desincronizar. Se testea con Vitest normal (el include por defecto de
+  `vite.config.ts` no está limitado a `src/`).
+- **Una coincidencia de watchlist NUNCA bloquea sola.** `evaluateMatch` es
+  una función pura (recibe tokens, devuelve `{isMatch, overallSimilarity}`)
+  que no escribe nada ni decide nada — el Edge Function decide qué hacer
+  con el resultado, y el bloqueo real (impedir publicar/solicitar) vive en
+  RLS (`is_watchlist_clear()` en `trips_insert_own`/
+  `pickup_requests_insert_own`), que solo un administrador puede revertir
+  resolviendo la alerta.
+- **`watchlist_status` y `is_admin` nunca los puede tocar el cliente por
+  su cuenta.** Ninguno de los dos está en el `grant update (...)` de la
+  Fase 1. El panel de administración SÍ necesita que un admin actualice el
+  `watchlist_status` de OTRO usuario (al resolver una alerta) — eso se
+  resolvió con un grant de columna muy angosto
+  (`grant update (watchlist_status)`) **más** un trigger
+  (`guard_watchlist_status_update`, `before update of watchlist_status`)
+  que exige `is_admin()` o `service_role`. Un simple
+  "grant + policy is_admin()" NO alcanzaba: las policies de Postgres se
+  combinan con OR y no distinguen columnas, así que la policy
+  `profiles_update_own` ya existente habría dejado a cualquier usuario
+  auto-asignarse `watchlist_status` en cuanto esa columna tuviera grant
+  (ver el gotcha de abajo).
+- **`AdminRoute` trata `profile === null` como "todavía cargando", no como
+  "no es admin"** — mismo criterio que ya usaba `ProtectedRoute`. El
+  primer intento redirigía a cualquiera (incluido un admin real) a `/`
+  apenas entraba a `/admin/alertas`, porque `AuthContext` baja `loading` a
+  `false` sin esperar a que `loadProfile` termine, así que `profile` podía
+  seguir siendo `null` un instante.
+
 ## Gotchas (para no volver a perder tiempo en esto)
 
 - **`google.maps.DirectionsService` está deprecado** (desde feb 2026) y los
@@ -187,6 +265,19 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
 - **Vercel necesita un rewrite a `index.html`** (`vercel.json` en la raíz)
   porque esto es una SPA con `BrowserRouter`: sin eso, recargar la página en
   cualquier ruta que no sea `/` (ej. `/conductor/mis-viajes`) da 404.
+- **`scikit-fuzzy` no declara `scipy` como dependencia** (al menos en la
+  versión usada aquí): `pip install scikit-fuzzy` solo, sin `scipy`
+  explícito en `requirements.txt`, falla al importar con
+  `ModuleNotFoundError: No module named 'scipy'`. Ya está en
+  `recommendation-service/requirements.txt`, pero si se regenera el archivo
+  desde cero hay que acordarse de incluirlo a mano.
+- **`new Map(...)` en `SearchTripsPage.tsx` resuelve al componente `Map` de
+  `@vis.gl/react-google-maps`, no al `Map` nativo de JS** — el import del
+  componente sombrea el global en todo el archivo. `orderByRanking` usa un
+  objeto plano en vez de `Map` por esto; si se necesita otra vez un mapa de
+  verdad en un archivo que ya importa el componente `Map`, hay que
+  importarlo con otro nombre (`import { Map as GoogleMap }`) o usar un
+  objeto plano / `Object.fromEntries`.
 - **El proyecto de Vercel está conectado a `danielayaulli/trabajofinal1`
   (rama `main`), NO a `danielayaulli/tf1` (rama `master`).** Al conectar
   Vercel la primera vez se creó sin querer un repo nuevo (`trabajofinal1`,
@@ -199,6 +290,31 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
   `git push vercel master:main`. Si en algún momento se reconecta Vercel
   directo al repo `tf1` (Project Settings → Git), este paso extra deja de
   ser necesario.
+
+- **Un `grant update (columna)` amplio combinado con una policy de RLS
+  "es tu propia fila" NO distingue qué columna cambió** — las policies de
+  Postgres se evalúan por fila, nunca por columna. Si necesitas que un
+  rol (ej. "admin") pueda cambiar una columna específica de una fila que
+  NO es la suya, sin abrir esa misma columna para que cualquiera la
+  cambie en su PROPIA fila, la única guardia real es un trigger
+  `before update of <columna>` (dispara solo si esa columna está en el
+  `SET` del `UPDATE`, sintáctico, no "si cambió de valor") que compruebe
+  el rol/permiso explícitamente — ver `watchlist_status` arriba. Esto
+  también evita el problema contrario: un trigger que mira CUALQUIER
+  update a la tabla (en vez de `of <columna>`) puede bloquear sin querer
+  otro trigger legítimo que actualiza esa misma tabla por un camino
+  distinto (nos pasó: un primer intento bloqueaba
+  `handle_rating_insert`, que actualiza `rating_avg`/`rating_count` de
+  OTRO usuario, porque el trigger no distinguía qué columnas tocaba ese
+  `UPDATE` en particular).
+- **Dentro de un trigger/función `security definer`, `auth.role()` sigue
+  siendo el rol de quien originó la petición** (no cambia a `postgres` ni
+  a nada relacionado con el dueño de la función). Y cuando se usa la
+  `service_role` key directo (sin JWT de un usuario final, como en los
+  Edge Functions), `auth.uid()` es `NULL` — cualquier policy/trigger que
+  dependa de `is_admin()` (que mira `profiles.id = auth.uid()`) va a dar
+  `false` para `service_role` a menos que se agregue explícitamente un
+  caso especial `auth.role() = 'service_role'`.
 
 ## Qué falta
 
@@ -217,6 +333,29 @@ secciones "Fase N — qué se construyó" en [README.md](README.md).
   en la práctica).
 - Ver la sección "Despliegue" más abajo para pasar de `npm run dev` local a
   Vercel.
+- **Matrices AHP reales del grupo**: hoy son de ejemplo (ver Fase 6);
+  reemplazar los 5 archivos `config/ahp_matrices/group_member_*.json` en
+  `recommendation-service/` por las reales no requiere ningún cambio de
+  código.
+- **El servicio de recomendación no está desplegado** (corre solo local,
+  decisión explícita para esta entrega — ver "Decisiones importantes").
+  Si se quisiera desplegar más adelante, el candidato natural es Render o
+  Railway (no Vercel: no es ideal para un servidor Python con numpy/
+  scikit-fuzzy de larga duración).
+- **Comparación contra un modelo de ML**: se evaluó incluirla ("módulo 3")
+  y se descartó para esta entrega; la evaluación del notebook solo compara
+  AHP+difuso contra el orden actual por distancia.
+- **El CSV real de requisitoriados (`data/watchlist_snapshot.csv`) todavía
+  no se importó** al proyecto de Supabase — Claude Code no puede obtener
+  la `service_role` key (el clasificador de modo automático la bloquea
+  como "Credential Materialization"), así que ese paso lo corre la
+  persona dueña del proyecto a mano (ver README, sección "Watchlist").
+  Para las pruebas de desarrollo se insertaron directo en la base de
+  datos los 7 nombres ficticios de `data/watchlist_example.csv` (mismo
+  resultado que correr el importador sobre ese archivo).
+- Limitaciones del watchlist (homónimos, captura única, no reemplaza
+  antecedentes reales): documentadas en el README, sección "Watchlist" —
+  no se repiten acá.
 
 ## Despliegue
 

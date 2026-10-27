@@ -1,11 +1,13 @@
 -- Usuarios de ejemplo para probar login manualmente sin pasar por el
 -- registro completo. Contraseña para todos: "password123"
 --
--- id        | email                  | rol               | sexo
--- 1111...11 | conductor1@example.com | conductor         | M
--- 2222...22 | conductor2@example.com | conductor         | F
--- 3333...33 | pasajero1@example.com  | pasajero          | M
--- 4444...44 | pasajero2@example.com  | pasajero          | F
+-- id        | email                    | rol               | sexo
+-- 1111...11 | conductor1@example.com   | conductor         | M
+-- 2222...22 | conductor2@example.com   | conductor         | F
+-- 3333...33 | pasajero1@example.com    | pasajero          | M
+-- 4444...44 | pasajero2@example.com    | pasajero          | F
+-- 5555...55 | admin1@example.com       | admin (pasajero)  | F
+-- 6666...66 | sospechoso1@example.com  | pasajero          | F (nombre calza con un ficticio del watchlist)
 
 -- Este archivo es idempotente vía "on conflict ... do nothing" en cada
 -- insert (nunca DELETE): se puede volver a correr sin duplicar datos y sin
@@ -47,6 +49,22 @@ insert into auth.users (
    '', '', '', '', '', '', '',
    '{"provider":"email","providers":["email"]}',
    '{"dni":"10000004","nombres":"Ana","apellidos":"Flores","sexo":"F","is_driver":false,"is_passenger":true}',
+   now(), now()),
+  ('00000000-0000-0000-0000-000000000000', '55555555-5555-5555-5555-555555555555',
+   'authenticated', 'authenticated', 'admin1@example.com',
+   extensions.crypt('password123', extensions.gen_salt('bf')), now(),
+   '', '', '', '', '', '', '',
+   '{"provider":"email","providers":["email"]}',
+   '{"dni":"10000005","nombres":"Rosa","apellidos":"Delgado","sexo":"F","is_driver":false,"is_passenger":true}',
+   now(), now()),
+  -- Nombre elegido A PROPÓSITO para calzar con una entrada de
+  -- data/watchlist_example.csv (nombres ficticios) -- ver más abajo.
+  ('00000000-0000-0000-0000-000000000000', '66666666-6666-6666-6666-666666666666',
+   'authenticated', 'authenticated', 'sospechoso1@example.com',
+   extensions.crypt('password123', extensions.gen_salt('bf')), now(),
+   '', '', '', '', '', '', '',
+   '{"provider":"email","providers":["email"]}',
+   '{"dni":"10000006","nombres":"Perpetua","apellidos":"Zambrano Huillca","sexo":"F","is_driver":false,"is_passenger":true}',
    now(), now())
 on conflict (id) do nothing;
 
@@ -63,7 +81,9 @@ where id in (
   '11111111-1111-1111-1111-111111111111',
   '22222222-2222-2222-2222-222222222222',
   '33333333-3333-3333-3333-333333333333',
-  '44444444-4444-4444-4444-444444444444'
+  '44444444-4444-4444-4444-444444444444',
+  '55555555-5555-5555-5555-555555555555',
+  '66666666-6666-6666-6666-666666666666'
 )
 on conflict (provider_id, provider) do nothing;
 
@@ -76,8 +96,25 @@ where id in (
   '11111111-1111-1111-1111-111111111111',
   '22222222-2222-2222-2222-222222222222',
   '33333333-3333-3333-3333-333333333333',
-  '44444444-4444-4444-4444-444444444444'
+  '44444444-4444-4444-4444-444444444444',
+  '55555555-5555-5555-5555-555555555555',
+  '66666666-6666-6666-6666-666666666666'
 );
+
+-- admin1: el único rol que ni siquiera el registro normal puede darse a sí
+-- mismo (is_admin no está en el "grant update" de profiles). Se asigna acá
+-- a mano, igual que verification_status arriba.
+update public.profiles
+set is_admin = true
+where id = '55555555-5555-5555-5555-555555555555';
+
+-- sospechoso1 se deja con watchlist_status NULL a propósito: el tamizado
+-- real (Edge Function screen-watchlist) lo va a marcar 'pending_review' y
+-- crear su security_alerts solo la primera vez que inicie sesión
+-- (AuthContext lo dispara automáticamente si watchlist_status es null) --
+-- así se prueba el flujo real de punta a punta en vez de fabricar el
+-- estado final a mano. Para que la coincidencia exista, primero hay que
+-- importar data/watchlist_example.csv (ver README, sección "Watchlist").
 
 -- Un vehículo por conductor sembrado: lo necesitan para poder publicar
 -- viajes (el trigger set_trip_vehicle exige que exista antes del insert).

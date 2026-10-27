@@ -8,12 +8,42 @@ import { formatSexComposition } from "../../lib/composition";
 import { fetchNearbyTrips, fetchTripRoutePoints, requestPickup } from "./api";
 import type { NearbyTrip } from "./api";
 import { TEST_MODE, TEST_TOLERANCE_M } from "../../lib/testMode";
+import { fetchAhpProfiles, fetchRanking } from "../recommendation/api";
+import type { AhpProfile, RankedTripResult, RankingResult } from "../recommendation/api";
+import { isWatchlistClear } from "../../types/profile";
 
 const LIMA_CENTER = { lat: -12.09, lng: -77.02 };
 const TOLERANCE_M = TEST_MODE ? (TEST_TOLERANCE_M ?? 2000) : 150;
 
+const AHP_PROFILE_LABELS: Record<AhpProfile, string> = {
+  group_consensus: "Equilibrado (consenso del grupo)",
+  prioriza_seguridad: "Priorizo seguridad",
+  prioriza_rapidez: "Priorizo rapidez",
+  default: "Pesos iguales",
+};
+
+const CRITERION_LABELS: Record<string, string> = {
+  tiempo_espera: "tiempo de espera",
+  calificacion: "calificación del conductor",
+  seguridad_percibida: "seguridad percibida",
+  asientos_libres: "asientos libres",
+  distancia: "cercanía a tu ruta",
+};
+
+function orderByRanking(trips: NearbyTrip[], ranking: RankedTripResult[]): NearbyTrip[] {
+  // OJO: no se puede usar `new Map(...)` (el `Map` global) en este archivo:
+  // el import de `Map`, el componente de @vis.gl/react-google-maps, lo
+  // sombrea. Se usa un objeto plano en su lugar.
+  const position: Record<string, number> = {};
+  ranking.forEach((r, i) => {
+    position[r.trip_id] = i;
+  });
+  return [...trips].sort((a, b) => (position[a.trip_id] ?? 0) - (position[b.trip_id] ?? 0));
+}
+
 function SearchTripsForm() {
   const { profile } = useAuth();
+  const watchlistBlocked = !!profile && !isWatchlistClear(profile.watchlist_status);
 
   const [searchPoint, setSearchPoint] = useState<LatLng | null>(null);
   const [results, setResults] = useState<NearbyTrip[]>([]);
@@ -27,6 +57,33 @@ function SearchTripsForm() {
   const [submitting, setSubmitting] = useState(false);
   const [requestedTripIds, setRequestedTripIds] = useState<Set<string>>(new Set());
 
+  const [ranking, setRanking] = useState<RankingResult | null>(null);
+  const [ahpProfile, setAhpProfile] = useState<AhpProfile>("group_consensus");
+  const [availableProfiles, setAvailableProfiles] = useState<AhpProfile[] | null>(null);
+  const [rankingLoading, setRankingLoading] = useState(false);
+
+  async function applyRanking(trips: NearbyTrip[], profile: AhpProfile) {
+    setRankingLoading(true);
+    try {
+      const result = await fetchRanking(trips, { ahpProfile: profile });
+      setRanking(result);
+      if (result) {
+        setResults(orderByRanking(trips, result.ranking));
+        if (!availableProfiles) {
+          const profiles = await fetchAhpProfiles();
+          if (profiles) setAvailableProfiles(profiles);
+        }
+      }
+    } finally {
+      setRankingLoading(false);
+    }
+  }
+
+  async function handleProfileChange(profile: AhpProfile) {
+    setAhpProfile(profile);
+    if (results.length > 0) await applyRanking(results, profile);
+  }
+
   function handleMapClick(latLng: LatLng) {
     if (!isInLima(latLng)) {
       setError("Ese punto está fuera de Lima Metropolitana.");
@@ -39,6 +96,7 @@ function SearchTripsForm() {
       setSearchPoint(latLng);
       setResults([]);
       setSearched(false);
+      setRanking(null);
     }
   }
 
@@ -46,10 +104,12 @@ function SearchTripsForm() {
     if (!searchPoint) return;
     setLoading(true);
     setError(null);
+    setRanking(null);
     try {
       const trips = await fetchNearbyTrips(searchPoint, TOLERANCE_M);
       setResults(trips);
       setSearched(true);
+      if (trips.length > 0) await applyRanking(trips, ahpProfile);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al buscar viajes.");
     } finally {
@@ -154,34 +214,78 @@ function SearchTripsForm() {
         <p>No hay viajes cuya ruta pase cerca de ese punto (a menos de {TOLERANCE_M} m).</p>
       )}
 
-      {!requestingTripId &&
-        results.map((trip) => (
-          <section key={trip.trip_id} className="trip-card">
-            <h2>{trip.avenida}</h2>
-            <p>Salida: {new Date(trip.departure_time).toLocaleString("es-PE")}</p>
-            <p>
-              Conductor: {trip.driver_nombre_pila} —{" "}
-              {trip.driver_rating_avg != null ? `${trip.driver_rating_avg.toFixed(1)} ★` : "sin calificaciones"}
-            </p>
-            <p>
-              Asientos: {trip.seats_available} / {trip.seats_total} libres · A ~
-              {Math.round(trip.distance_m)} m de tu ubicación
-            </p>
-            <p>Pasajeros confirmados: {formatSexComposition(trip.men_count, trip.women_count)}</p>
-            {trip.vehicle_placa && (
-              <p>
-                Carro: {trip.vehicle_modelo} {trip.vehicle_color} — placa {trip.vehicle_placa}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => handleStartRequest(trip.trip_id)}
-              disabled={requestedTripIds.has(trip.trip_id)}
+      {!requestingTripId && ranking && (
+        <div className="trip-card">
+          <h3>¿Cómo se ordenan estos viajes?</h3>
+          <label>
+            Perfil de ranking
+            <select
+              value={ahpProfile}
+              onChange={(e) => handleProfileChange(e.target.value as AhpProfile)}
+              disabled={rankingLoading}
             >
-              {requestedTripIds.has(trip.trip_id) ? "Solicitud enviada" : "Solicitar recojo"}
-            </button>
-          </section>
-        ))}
+              {(availableProfiles ?? [ahpProfile]).map((p) => (
+                <option key={p} value={p}>
+                  {AHP_PROFILE_LABELS[p] ?? p}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p>
+            Pesos:{" "}
+            {Object.entries(ranking.weights)
+              .map(([criterio, peso]) => `${CRITERION_LABELS[criterio] ?? criterio} ${Math.round(peso * 100)}%`)
+              .join(" · ")}
+          </p>
+          {!ranking.consistency.consistent && (
+            <p className="error">
+              Las matrices de comparación no son muy consistentes (CR={ranking.consistency.cr.toFixed(2)}); el ranking
+              puede no reflejar bien las prioridades reales.
+            </p>
+          )}
+        </div>
+      )}
+
+      {!requestingTripId &&
+        results.map((trip) => {
+          const rankedInfo = ranking?.ranking.find((r) => r.trip_id === trip.trip_id);
+          return (
+            <section key={trip.trip_id} className="trip-card">
+              <h2>{trip.avenida}</h2>
+              <p>Salida: {new Date(trip.departure_time).toLocaleString("es-PE")}</p>
+              <p>
+                Conductor: {trip.driver_nombre_pila} —{" "}
+                {trip.driver_rating_avg != null ? `${trip.driver_rating_avg.toFixed(1)} ★` : "sin calificaciones"}
+              </p>
+              <p>
+                Asientos: {trip.seats_available} / {trip.seats_total} libres · A ~
+                {Math.round(trip.distance_m)} m de tu ubicación
+              </p>
+              <p>Pasajeros confirmados: {formatSexComposition(trip.men_count, trip.women_count)}</p>
+              {trip.vehicle_placa && (
+                <p>
+                  Carro: {trip.vehicle_modelo} {trip.vehicle_color} — placa {trip.vehicle_placa}
+                </p>
+              )}
+              {rankedInfo && (
+                <p>
+                  Seguridad percibida: {Math.round(rankedInfo.seguridad_percibida)}/100 — {rankedInfo.explanation}
+                </p>
+              )}
+              {watchlistBlocked ? (
+                <p>Estamos verificando tu información, te avisaremos. Mientras tanto no puedes solicitar viajes.</p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleStartRequest(trip.trip_id)}
+                  disabled={requestedTripIds.has(trip.trip_id)}
+                >
+                  {requestedTripIds.has(trip.trip_id) ? "Solicitud enviada" : "Solicitar recojo"}
+                </button>
+              )}
+            </section>
+          );
+        })}
     </div>
   );
 }

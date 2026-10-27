@@ -61,3 +61,32 @@ export async function triggerIdentityVerification(): Promise<VerificationResult>
   if (error) throw error;
   return data as VerificationResult;
 }
+
+export interface WatchlistScreeningResult {
+  status: "pending_review" | "clear" | "unchanged";
+}
+
+// Tamiza el nombre del usuario que llama contra la lista de requisitoriados
+// (ver supabase/functions/screen-watchlist). Se invoca al registrarse, al
+// editar nombres/apellidos (EditProfilePage), y una vez por sesión desde
+// AuthContext si watchlist_status todavía es null.
+export async function triggerWatchlistScreening(): Promise<WatchlistScreeningResult> {
+  const { data, error } = await supabase.functions.invoke<WatchlistScreeningResult>(
+    "screen-watchlist",
+  );
+  if (error) throw error;
+  return data as WatchlistScreeningResult;
+}
+
+export interface UpdateNamesInput {
+  nombres: string;
+  apellidos: string;
+}
+
+export async function updateOwnNames(userId: string, input: UpdateNamesInput) {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ nombres: input.nombres, apellidos: input.apellidos })
+    .eq("id", userId);
+  if (error) throw error;
+}

@@ -11,6 +11,9 @@ que estar pulido.
 - **Backend:** Supabase (Auth, Postgres + PostGIS, Realtime, Edge Functions)
 - **Mapas/rutas:** Google Maps JavaScript API + Routes API
 - **Despliegue:** Vercel
+- **Recomendación (AHP + lógica difusa):** servicio Python aparte
+  (FastAPI + numpy + scikit-fuzzy), corre local — ver
+  [recommendation-service/README.md](recommendation-service/README.md)
 
 ## Requisitos
 
@@ -57,6 +60,8 @@ datos se irán completando a medida que avancen:
 - [x] Fase 3 — Búsqueda y solicitudes del pasajero
 - [x] Fase 4 — Puntuaciones
 - [x] Fase 5 — Vehículo del conductor, ubicación en tiempo real y despliegue
+- [x] Fase 6 — Módulo de recomendación: AHP + lógica difusa
+- [x] Fase 7 — Tamizado contra lista de requisitoriados (watchlist)
 
 ### Fase 1 — qué se construyó
 
@@ -271,6 +276,159 @@ datos se irán completando a medida que avancen:
    reinicia `npm run dev`, entra a un viaje `ongoing` y haz clic en el mapa
    para fijar una ubicación simulada en vez de depender del GPS.
 
+### Fase 6 — qué se construyó
+
+- Servicio Python aparte (`recommendation-service/`, FastAPI + numpy +
+  scikit-fuzzy) que calcula un ranking de viajes con **AHP** (pesos de 5
+  criterios por autovector principal, con razón de consistencia CR) y
+  **lógica difusa Mamdani** (seguridad percibida 0-100, a partir de la
+  calificación del conductor, cuántos viajes tiene calificados, la
+  composición de sexo del vehículo y el tiempo de espera).
+- `POST /rank`: recibe los viajes candidatos (los mismos datos que ya
+  devuelve `nearby_trips`) y devuelve el ranking, los pesos usados, el CR
+  y una explicación por viaje. `GET /ahp/profiles` lista los perfiles
+  disponibles (consenso del grupo, "prioriza seguridad", "prioriza
+  rapidez", pesos iguales).
+- En `/pasajero/buscar`: si el servicio está disponible
+  (`VITE_RECOMMENDATION_API_URL` configurada), los resultados se reordenan
+  según el ranking, se muestra la "seguridad percibida" y la explicación
+  de cada viaje, y aparece un selector de perfil. Si el servicio no está
+  disponible (como en la app desplegada en Vercel, donde no corre), la
+  búsqueda se comporta exactamente igual que antes — sin ningún error
+  visible.
+- `notebooks/ahp_fuzzy_analysis.ipynb`: todo el procedimiento paso a paso
+  (pesos, CR, gráficas de las funciones de membresía y la superficie de
+  control) y la evaluación (concordancia y sensibilidad) comparando el
+  orden actual por distancia contra AHP+difuso.
+- Tests (`pytest`, 24 en verde): pesos que suman 1, CR correcto contra
+  matrices conocidas, casos límite de las reglas difusas, y que el ranking
+  cambie coherentemente al cambiar los pesos.
+- Detalle completo (cómo correrlo, formato de las matrices, la base de
+  reglas difusas): [recommendation-service/README.md](recommendation-service/README.md).
+
+### Qué probar a mano (Fase 6)
+
+1. `cd recommendation-service && python3 -m venv .venv && source
+   .venv/bin/activate && pip install -r requirements.txt && uvicorn
+   app.main:app --reload`.
+2. En `.env.local` del proyecto principal, agrega
+   `VITE_RECOMMENDATION_API_URL=http://localhost:8000` y reinicia
+   `npm run dev`.
+3. Entra con `pasajero1@example.com` / `password123` → "Buscar viajes" →
+   marca un punto sobre la ruta sembrada y busca. Debería aparecer un
+   recuadro "¿Cómo se ordenan estos viajes?" con los pesos y, en cada
+   viaje, "Seguridad percibida: X/100" con una explicación.
+4. Cambia el selector de perfil (ej. a "Priorizo seguridad") y confirma
+   que los pesos y el orden de los viajes cambian.
+5. Detén el servicio Python (`Ctrl+C`) y repite la búsqueda: debería verse
+   exactamente como en la Fase 3/5 (sin el recuadro de ranking, sin
+   errores) — confirma que el resto de la app no depende de este módulo.
+6. `cd recommendation-service && pytest` — deberían pasar los 24 tests.
+7. Abre `notebooks/ahp_fuzzy_analysis.ipynb` en Jupyter y córrelo completo
+   (o `jupyter nbconvert --to notebook --execute --inplace
+   notebooks/ahp_fuzzy_analysis.ipynb`): debería terminar sin errores, con
+   las gráficas y las tablas de concordancia/sensibilidad.
+
+### Fase 7 — qué se construyó
+
+- Tamizado del nombre de cada usuario contra una lista pública de
+  "requisitoriados" (captura única, ver "Watchlist" más abajo) — una capa
+  de verificación **independiente** de la Fase 1 (DNI/antecedentes mock):
+  un usuario puede estar `verified` y aun así quedar `pending_review` por
+  el watchlist, o al revés.
+- Comparación por tokens (no exacta): exige coincidencia en al menos un
+  nombre de pila **y** en todos los apellidos, combinada con una similitud
+  aproximada (Levenshtein) para tolerar errores de tipeo — que calce un
+  solo nombre o un solo apellido común nunca genera alerta
+  (`supabase/functions/_shared/watchlistMatching.ts`, con tests).
+- Una coincidencia **nunca bloquea sola**: crea una fila en
+  `security_alerts` y deja la cuenta en `watchlist_status='pending_review'`
+  — sin poder publicar ni solicitar viajes, con un mensaje neutro ("Estamos
+  verificando tu información, te avisaremos"), hasta que un administrador
+  la resuelva en `/admin/alertas`.
+- Se tamiza al registrarse y al editar nombres/apellidos
+  (`/perfil/editar`, nueva), vía el Edge Function `screen-watchlist`
+  (mismo patrón que `verify-identity` de la Fase 1).
+- Rol de administrador (`profiles.is_admin`, nunca editable por el
+  cliente) y panel mínimo (`/admin/alertas`): lista las alertas
+  pendientes con el nombre, DNI, la entrada coincidente y la similitud;
+  Descartar/Confirmar piden un motivo y quedan registrados
+  (`revisado_por`, `revisado_en`, `motivo`).
+- RLS: nadie que no sea administrador puede leer `watchlist_batches`,
+  `watchlist_entries` ni `security_alerts` — ni siquiera saben que
+  existen.
+- Aviso de privacidad + checkbox de consentimiento (Ley N° 29733) en el
+  registro.
+- Script de importación idempotente
+  (`npm run import:watchlist -- --file ... --source ... --captured-at ...`)
+  y tests nuevos (normalización, homónimos parciales, umbrales,
+  idempotencia del parseo) en
+  `supabase/functions/_shared/watchlistMatching.test.ts` y
+  `scripts/watchlistImport/parse.test.ts`.
+
+### Qué probar a mano (Fase 7)
+
+1. Entra con `sospechoso1@example.com` / `password123` (nombre sembrado a
+   propósito para calzar con una entrada ficticia del watchlist de
+   desarrollo) → deberías ver "Estamos verificando tu información..." y no
+   poder publicar/solicitar.
+2. Entra con `admin1@example.com` / `password123` → `/admin/alertas` (o el
+   link "Panel de administración" en el Home) → deberías ver la alerta de
+   `sospechoso1` con su DNI, la entrada coincidente y el % de similitud.
+   Descártala con un motivo.
+3. Vuelve a entrar con `sospechoso1@example.com`: ya debería poder
+   publicar/solicitar de nuevo.
+4. Prueba el registro: intenta enviar el formulario sin marcar el
+   checkbox de privacidad (debe rechazarlo); regístrate con un nombre que
+   no calce con nada del watchlist (no debería pasar nada); edita tu
+   nombre en "Editar mi perfil" a uno que sí calce con una entrada
+   ficticia (puedes usar un nombre de `data/watchlist_example.csv`) y
+   confirma que te vuelve a dejar en revisión.
+5. Con un usuario normal (no admin), intenta ir a `/admin/alertas` (te
+   redirige) y, desde la consola del navegador, intenta leer
+   `watchlist_entries` o `security_alerts` directo con el cliente de
+   Supabase — debería devolver vacío por RLS.
+6. `npm run test` — los tests de `watchlistMatching` y del parser del
+   importador deben estar en verde junto con el resto de la suite.
+
+## Watchlist: cómo importar y limitaciones
+
+**Importar un CSV nuevo:**
+
+```bash
+SUPABASE_SERVICE_ROLE_KEY=... npm run import:watchlist -- \
+  --file data/watchlist_snapshot.csv \
+  --source "Captura pública, <sitio>, <fecha>" \
+  --captured-at 2026-10-27
+```
+
+La `service_role` key sale de Supabase → Project Settings → API — nunca la
+guardes en un archivo del repo, solo expórtala en tu shell antes de correr
+el script. `data/watchlist_snapshot.csv` (el archivo real) está en
+`.gitignore`: nunca se sube al repositorio. `data/watchlist_example.csv`
+(nombres ficticios, trackeado) deja correr el importador y el resto del
+módulo sin necesitar el archivo real.
+
+**Limitaciones (léelas antes de confiar en esto para algo más que una
+demo universitaria):**
+
+- La lista solo cubre a personas marcadas como "más buscadas" en una
+  fuente pública puntual — **no reemplaza** una consulta de antecedentes
+  penales ni judiciales real.
+- Puede haber **falsos positivos por homónimos**: dos personas distintas
+  pueden compartir nombre y apellidos exactos. Por eso ninguna coincidencia
+  bloquea sola — siempre pasa por revisión humana antes de restringir
+  nada, y el mensaje al usuario es neutro, sin acusarlo de nada.
+- También puede haber **falsos negativos**: errores de tipeo grandes, un
+  segundo nombre omitido, o apellidos en otro orden pueden no calzar según
+  los umbrales configurados.
+- Es una **captura única** (no scraping automático, no se repite desde la
+  app): se vuelve obsoleta con el tiempo. Hay que re-importar a mano si se
+  quiere una lista más reciente.
+- Para un uso real (no universitario) haría falta una fuente **oficial y
+  autorizada** (ej. un convenio con el Poder Judicial/PNP), no una captura
+  de una página pública hecha a mano.
+
 ## Despliegue en Vercel
 
 Resumen rápido (el detalle de cada paso, con el porqué, está en
@@ -366,12 +524,18 @@ src/
   types/          # tipos TypeScript compartidos / generados de Supabase
   components/     # componentes UI reutilizables
   features/
-    auth/         # registro, login, verificación de identidad
+    auth/         # registro, login, verificación de identidad, rol admin
     trips/        # publicar/buscar/listar viajes y solicitudes de recojo
     ratings/      # calificaciones mutuas
     vehicles/     # vehículo del conductor
     location/     # ubicación en tiempo real (hooks, RLS-mirror, mapa en vivo)
+    recommendation/ # cliente del servicio de ranking (AHP + difuso), con fallback
+    admin/        # panel de alertas del watchlist
 supabase/
   migrations/     # esquema SQL versionado
-  functions/      # Edge Functions (ej. verificación de identidad mock)
+  functions/      # Edge Functions (verify-identity, screen-watchlist)
+    _shared/      # lógica compartida entre Edge Functions y Node (ej. watchlistMatching.ts)
+recommendation-service/  # servicio Python aparte: AHP + lógica difusa (ver su README)
+scripts/          # scripts de un solo uso (ej. import-watchlist.ts)
+data/             # watchlist_example.csv (ficticio, trackeado); watchlist_snapshot.csv (real, gitignored)
 ```
